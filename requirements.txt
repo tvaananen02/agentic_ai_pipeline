@@ -1,0 +1,8 @@
+mcp[cli]
+anthropic
+pydantic
+rich
+simple-term-menu
+docker
+pytest
+playwright
