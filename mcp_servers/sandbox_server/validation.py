@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import shlex
 from pathlib import Path
-
+from urllib.parse import urlparse
 class ValidationError(Exception):
     "Raised when a validation error occurs."
 
@@ -21,6 +21,11 @@ ALLOWED_COMMANDS: set[str] = {
     "npx",
     "pytest",
     "git",
+}
+
+WHITELISTED_DOMAINS: set[str] = {
+    "localhost",
+    "render"
 }
 
 def safe_path(user_path: str) -> Path:
@@ -58,3 +63,26 @@ def safe_command(command: str) -> list[str]:
             f"The command '{executable}' is not allowed. "
         )
     return parts
+    
+def safe_url(url: str):
+    if not url or url.strip() =="":
+        raise ValidationError("Empty url is not allowed")
+    try:
+        parsed_url = urlparse(url)
+    except ValueError as e:
+        raise ValidationError(f"Could not parse url: {e}")
+    
+    if parsed_url.scheme not in {"http", "https"}:
+        raise ValidationError(
+            f"The url {url} is not valid"
+        )
+    if not parsed_url.hostname:
+        raise ValidationError(f"The url {url} does not have a hostname")
+    hostname = parsed_url.hostname.lower()
+    is_valid_domain = any(
+        hostname == domain or hostname.endswith("." + domain)
+        for domain in WHITELISTED_DOMAINS
+    )
+    if not is_valid_domain:
+        raise ValidationError(f"The domain {hostname} is not included in the allowed domains ")
+    return parsed_url.geturl()  

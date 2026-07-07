@@ -11,10 +11,12 @@ from __future__ import annotations
 import functools
 import os
 import subprocess
+from time import time
 from typing import Callable
 from mcp.server.fastmcp import FastMCP
 from tools import is_tool_allowed
-from validation import ValidationError, safe_command, safe_path
+from validation import ValidationError, safe_command, safe_path, safe_url
+import httpx
 
 mcp = FastMCP("sandbox-server")
 
@@ -167,6 +169,20 @@ def git_push() -> str:
         return "ERROR: git push timed out"
     except OSError as e:
         return f"ERROR: could not run git: {e}"
+        
+@mcp.tool()
+@require_role
+def http_request(url: str, method: str, body: str | None = None) -> str:
+    try:
+        target_url = safe_url(url)
+    except ValidationError as e:
+        return f"ERROR: {e}"
+    headers = {"Content-Type": "application/json"} if body and method.lower() == "post" else {}
+    try:
+        response = httpx.request(target_url, method, content=body, headers=headers, timeout=30)
+    except httpx.RequestError as exc:
+        return(f"An error occurred while requesting {exc.request.url!r}.")
+    return f"{response.status_code} \n {response.text}"    
 
 if __name__ == "__main__":
     if not AGENT_ROLE:
