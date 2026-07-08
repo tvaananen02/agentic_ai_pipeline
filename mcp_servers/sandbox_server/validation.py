@@ -25,7 +25,7 @@ ALLOWED_COMMANDS: set[str] = {
 
 WHITELISTED_DOMAINS: set[str] = {
     "localhost",
-    "render"
+    "onrender.com"
 }
 
 def safe_path(user_path: str) -> Path:

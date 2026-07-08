@@ -8,10 +8,10 @@ Testing with MCP Inspector:
     AGENT_ROLE=se_engineer npx @modelcontextprotocol/inspector python server.py
 """
 from __future__ import annotations
+import sys
 import functools
 import os
 import subprocess
-from time import time
 from typing import Callable
 from mcp.server.fastmcp import FastMCP
 from tools import is_tool_allowed
@@ -179,7 +179,7 @@ def http_request(url: str, method: str, body: str | None = None) -> str:
         return f"ERROR: {e}"
     headers = {"Content-Type": "application/json"} if body and method.lower() == "post" else {}
     try:
-        response = httpx.request(target_url, method, content=body, headers=headers, timeout=30)
+        response = httpx.request( method, target_url, content=body, headers=headers, timeout=30)
     except httpx.RequestError as exc:
         return(f"An error occurred while requesting {exc.request.url!r}.")
     return f"{response.status_code} \n {response.text}"    
@@ -188,6 +188,10 @@ if __name__ == "__main__":
     if not AGENT_ROLE:
         print(
             "WARNING: AGENT_ROLE is not set. All tool calls will be "
-            "rejected. Launch with e.g. AGENT_ROLE=se_engineer python server.py"
+            "rejected. Launch with e.g. AGENT_ROLE=se_engineer python server.py",
+            file=sys.stderr,
         )
+    tool_names = [t.name for t in mcp._tool_manager.list_tools()]
+    print(f"Registered tools: {tool_names}", file=sys.stderr)
+    print(f"AGENT_ROLE={AGENT_ROLE or '(not set)'}", file=sys.stderr)
     mcp.run()
