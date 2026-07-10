@@ -8,19 +8,25 @@ Testing with MCP Inspector:
     AGENT_ROLE=se_engineer npx @modelcontextprotocol/inspector python server.py
 """
 from __future__ import annotations
-import sys
 import functools
 import os
 import subprocess
 from typing import Callable
-from mcp.server.fastmcp import FastMCP
-from tools import is_tool_allowed
-from validation import ValidationError, safe_command, safe_path, safe_url
 import httpx
+import sys
+from mcp.server.fastmcp import FastMCP
+from tools import TOOL_SETS, is_tool_allowed
+from validation import ValidationError, safe_command, safe_path, safe_url
 
 mcp = FastMCP("sandbox-server")
 
 AGENT_ROLE = os.environ.get("AGENT_ROLE", "")
+
+@mcp._mcp_server.list_tools()
+async def filtered_list_tools():
+    all_tools = await mcp.list_tools()
+    allowed = TOOL_SETS.get(AGENT_ROLE, set())
+    return [t for t in all_tools if t.name in allowed]
 
 def require_role(func: Callable) -> Callable:
     tool_name = func.__name__
@@ -47,6 +53,7 @@ def read_file(path: str) -> str:
         return f"ERROR: file not found: {path}"
     if not target.is_file():
         return f"ERROR: path is not a file: {path}"
+
     try:
         return target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -74,19 +81,21 @@ def list_dir(path: str = ".") -> str:
         target = safe_path(path)
     except ValidationError as e:
         return f"ERROR: {e}"
+
     if not target.exists():
         return f"ERROR: directory not found: {path}"
     if not target.is_dir():
         return f"ERROR: path is not a directory: {path}"
+
     entries = sorted(target.iterdir(), key=lambda p: p.name)
     if not entries:
         return "(empty directory)"
+
     lines = []
     for entry in entries:
         suffix = "/" if entry.is_dir() else ""
         lines.append(f"{entry.name}{suffix}")
-    result: str = "\n".join(lines) 
-    return result
+    return "\n".join(lines)
 
 @mcp.tool()
 @require_role
@@ -108,6 +117,7 @@ def run_command(command: str, timeout_seconds: int = 60) -> str:
         return f"ERROR: command timed out after {timeout_seconds}s: {command}"
     except OSError as e:
         return f"ERROR: could not run command: {e}"
+
     output = result.stdout
     if result.stderr:
         output += f"\n--- stderr ---\n{result.stderr}"
@@ -118,71 +128,76 @@ def run_command(command: str, timeout_seconds: int = 60) -> str:
 @require_role
 def git_commit(message: str) -> str:
     if not message or not message.strip():
-        return "ERROR: commit message is required"
-    workspace = os.environ.get("WORKSPACE_ROOT", "/workspace")    
+        return "ERROR: commit message cannot be empty"
+    workspace = os.environ.get("WORKSPACE_ROOT", "/workspace")
     try:
         add_result = subprocess.run(
             ["git", "add", "-A"],
-            cwd= workspace,
+            cwd=workspace,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
         if add_result.returncode != 0:
             return f"ERROR: git add failed: {add_result.stderr}"
+
         commit_result = subprocess.run(
             ["git", "commit", "-m", message],
             cwd=workspace,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
-        if commit_result.returncode != 0:
-            return f"ERROR: git commit failed: {commit_result.stderr}"
-        output = commit_result.stdout
-        if commit_result.stderr:
-            output += f"\n--- stderr ---\n{commit_result.stderr}"
-        return output
-    except subprocess.TimeoutExpired: 
-        return "git commit timed out"
+    except subprocess.TimeoutExpired:
+        return "ERROR: git commit timed out"
     except OSError as e:
-        return f"ERROR: could not run git commit: {e}"
+        return f"ERROR: could not run git: {e}"
+
+    output = commit_result.stdout
+    if commit_result.stderr:
+        output += f"\n--- stderr ---\n{commit_result.stderr}"
+    output += f"\n--- exit code: {commit_result.returncode} ---"
+    return output
 
 @mcp.tool()
 @require_role
 def git_push() -> str:
-    workspace = os.environ.get("WORKSPACE_ROOT", "/workspace")    
+    workspace = os.environ.get("WORKSPACE_ROOT", "/workspace")
     try:
-        push_result = subprocess.run(
+        result = subprocess.run(
             ["git", "push"],
             cwd=workspace,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
         )
-        output = push_result.stdout
-        if push_result.stderr:
-            output += f"\n--- stderr ---\n{push_result.stderr}"
-        output += f"\n--- exit code: {push_result.returncode} ---"
-        return output
     except subprocess.TimeoutExpired:
         return "ERROR: git push timed out"
     except OSError as e:
         return f"ERROR: could not run git: {e}"
-        
+
+    output = result.stdout
+    if result.stderr:
+        output += f"\n--- stderr ---\n{result.stderr}"
+    output += f"\n--- exit code: {result.returncode} ---"
+    return output
+
 @mcp.tool()
 @require_role
-def http_request(url: str, method: str, body: str | None = None) -> str:
+def http_request(url: str, method: str = "GET", body: str | None = None) -> str:
+    method = method.upper()
     try:
         target_url = safe_url(url)
     except ValidationError as e:
         return f"ERROR: {e}"
-    headers = {"Content-Type": "application/json"} if body and method.lower() == "post" else {}
+    headers = {"Content-Type": "application/json"} if body else None
     try:
-        response = httpx.request( method, target_url, content=body, headers=headers, timeout=30)
+        response = httpx.request(
+            method, target_url, content=body, headers=headers, timeout=30
+        )
     except httpx.RequestError as exc:
-        return(f"An error occurred while requesting {exc.request.url!r}.")
-    return f"{response.status_code} \n {response.text}"    
+        return f"ERROR: request failed: {exc}"
+    return f"Status: {response.status_code}\n{response.text}"
 
 if __name__ == "__main__":
     if not AGENT_ROLE:
