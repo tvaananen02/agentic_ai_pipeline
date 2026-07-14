@@ -35,7 +35,8 @@ class OpenAICompatibleProvider(LLMProvider):
                 response = await self.client.chat.completions.create(**kwargs)
                 break
             except openai.BadRequestError as e:
-                code = (e.body or {}).get("error", {}).get("code")
+                error = e.body.get("error", {}) if isinstance(e.body, dict) else {}
+                code = error.get("code")
                 if code != "tool_use_failed" or attempt == self.max_retries:
                     raise
                 print(f"  [retry {attempt + 1}/{self.max_retries}] malformed tool call, asking model to retry")
