@@ -206,7 +206,4 @@ if __name__ == "__main__":
             "rejected. Launch with e.g. AGENT_ROLE=se_engineer python server.py",
             file=sys.stderr,
         )
-    tool_names = [t.name for t in mcp._tool_manager.list_tools()]
-    print(f"Registered tools: {tool_names}", file=sys.stderr)
-    print(f"AGENT_ROLE={AGENT_ROLE or '(not set)'}", file=sys.stderr)
     mcp.run()
