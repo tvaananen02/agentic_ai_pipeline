@@ -35,6 +35,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 response = await self.client.chat.completions.create(**kwargs)
                 break
             except openai.BadRequestError as e:
+                print(f"  [debug] e.body type: {type(e.body)}, value: {e.body!r}")    
                 error = e.body.get("error", {}) if isinstance(e.body, dict) else {}
                 code = error.get("code")
                 if code != "tool_use_failed" or attempt == self.max_retries:

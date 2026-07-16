@@ -11,7 +11,8 @@ from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
 from state import PipelineState
 from interrupt import run_with_interrupt
-
+sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
+from screens import start_screen, get_spec, checkpoint_screen, done_screen
 
 def load_prompt(role: str) -> str:
     prompt_path = PROMPT_DIR / f"{role}.md"
@@ -36,46 +37,56 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         base_url="https://api.groq.com/openai/v1", 
         api_key=os.environ["GROQ_API_KEY"])
 
+ 
 async def run_stage(role: str, workspace: Path, user_input: str, state: PipelineState, log_path: Path) -> bool:
     params = build_docker_params(role, workspace)
     provider = build_provider(role)
+ 
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             print(f"{role}: Connected, starting...")
             result, tools_called = await run_tool_loop(provider, session, load_prompt(role), user_input)
-            state.record(role, result, approved=False)
             print(f"{role}: Result:", result)
-            
-            if REQUIRED_TOOL[role] not in tools_called:
-                print(f"{role}: Required tool {REQUIRED_TOOL[role]} not called, stopping pipeline.")
-                state.record(role, result, approved=False)
-                state.save(log_path)                
-                return False
-                
-            if role == "se_engineer" and "run_command" not in tools_called:
-                print(f"{role}: AUTO-REJECTED: never called run_command to verify code.")
+ 
+            required = REQUIRED_TOOL[role]
+            if required not in tools_called:
+                print(f"{role}: AUTO-REJECTED - never called {required}. Tools called: {tools_called}")
                 state.record(role, result, approved=False)
                 state.save(log_path)
                 return False
-            decision = checkpoint(role, result)
+            if role == "se_engineer" and "run_command" not in tools_called:
+                print(f"{role}: AUTO-REJECTED - never called run_command to verify the code. Tools called: {tools_called}")
+                state.record(role, result, approved=False)
+                state.save(log_path)
+                return False
+ 
+            decision = checkpoint_screen(role, result)
             approved = decision == "approve"
             state.record(role, result, approved)
             state.save(log_path)
             return approved
 
+
 async def main():
+    if not start_screen():
+        return
+    spec = get_spec()
+    if not spec:
+        print("No spec given, exiting.")
+        return
+        
     workspace = DEMO_PROJECT_DIR/"test_run"
     os.makedirs(workspace, exist_ok=True)
-    spec = "A python program which simulates an atm"
     state = PipelineState(spec=spec, project_slug="test_run", workspace=str(workspace))
     log_path = RUN_LOGS_DIR / "test_run.json"
+    
     for role in PIPELINE_ORDER:
         approved = await run_stage(role, workspace, spec, state, log_path)
         if not approved:
             print(f"{role}: Not approved, stopping pipeline.")
             return
-    print(f"Pipeline completed successfully. Files in {workspace}")
+    done_screen(workspace, log_path)
 
 if __name__ == "__main__":
     run_with_interrupt(main())
