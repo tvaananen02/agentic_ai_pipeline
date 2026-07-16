@@ -1,11 +1,9 @@
-import asyncio
 import sys
 import os
 from pathlib import Path
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp import ClientSession
-from config import DOCKER_IMAGE, PIPELINE_ORDER, DEMO_PROJECT_DIR, REQUIRED_TOOL, PROMPT_DIR, RUN_LOGS_DIR
-from checkpoints import checkpoint
+from config import DOCKER_IMAGE, PIPELINE_ORDER, DEMO_PROJECT_DIR, REQUIRED_TOOL, PROMPT_DIR, RUN_LOGS_DIR, USED_MODEL
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
@@ -33,7 +31,7 @@ def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
 
 def build_provider(role: str) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
-        model="llama-3.3-70b-versatile", 
+        model=USED_MODEL, 
         base_url="https://api.groq.com/openai/v1", 
         api_key=os.environ["GROQ_API_KEY"])
 
