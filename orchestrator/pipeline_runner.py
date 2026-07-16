@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
 from state import PipelineState
-
+from interrupt import run_with_interrupt
 
 
 def load_prompt(role: str) -> str:
@@ -78,4 +78,4 @@ async def main():
     print(f"Pipeline completed successfully. Files in {workspace}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_with_interrupt(main())
