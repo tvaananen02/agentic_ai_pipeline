@@ -17,10 +17,16 @@ async def run_tool_loop(
     tools_called: list[dict] = []
 
     for i in range(max_iterations):
-        response = await provider.call(messages, tools)
+        try:
+            response = await provider.call(messages, tools)
+        except Exception as e:
+            print(f"  LLM call failed and could not be recovered: {e}")
+            return f"ERROR: LLM call failed: {e}", tools_called
+
         if not response.tool_calls:
             return response.text or "", tools_called
         messages.append(provider.format_assistant_message(response))
+        
         for tc in response.tool_calls:
             print(f"  tool_call: {tc.name}({tc.arguments})")
             tools_called.append({"name": tc.name, "arguments": tc.arguments})
