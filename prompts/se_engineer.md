@@ -60,6 +60,8 @@ Do not rename:
 - parameters
 unless the tests are also changed—which you must NOT do.
 Treat the tests as the implementation contract.
+## Tests are necessary but not sufficient
+Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md before finishing and check you've satisfied it in full, not just the tests.
 ## Persistent servers
 This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library.
 - It MUST listen on port 8000 specifically, on localhost or 0.0.0.0.

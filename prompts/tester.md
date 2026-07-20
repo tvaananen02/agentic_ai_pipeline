@@ -102,11 +102,19 @@ Generate `test_solution.py`.
 
 Write REAL pytest code.
 
+Always import the code under test with exactly this line:
+
+from solution import <names>
+
+The module is always named `solution`, regardless of what you named the project. Never substitute the project name, folder name, or any other name here - the implementation file is always solution.py, so the import is always `from solution import ...`.
+
 The tests should execute successfully once a correct implementation exists.
 
 The tests are expected to fail initially because `solution.py` does not yet exist.
 
 Do NOT attempt to fix this.
+
+Never write a test with an empty or placeholder body (for example, a test function containing only `pass`). Every test must contain a real, executing assertion. A test that cannot yet be fully written should be omitted entirely rather than stubbed out - a stub that always passes is worse than no test, since it falsely signals coverage.
 
 ## Public Interface Design
 
@@ -129,6 +137,22 @@ Avoid:
 Function signatures should be simple and intuitive.
 
 Only expose interfaces that are required by the requirements.
+
+## Interface Style
+
+Prefer testing pure functions with clear inputs and outputs.
+
+Avoid testing via:
+
+- stdin
+- stdout
+- print statements
+- capsys
+- interactive prompts
+
+Only test interactive behavior if the requirements explicitly require an interactive interface.
+
+If the requirements describe a command line tool, prefer a testable core function (for example, is_prime(n)) with a thin CLI wrapper around it, rather than making the core logic reachable only through console input and output.
 
 ## Pytest Standards
 
