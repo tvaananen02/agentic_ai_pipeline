@@ -8,10 +8,16 @@ TOOL_SETS: dict[str, set[str]] = {
     "re_engineer": {"read_file", "write_file", "list_dir"},
     "tester": {"read_file", "write_file", "list_dir"},
     "se_engineer": {
-        "read_file", "write_file", "list_dir",
+        "read_file",
+        "write_file",
+        "list_dir",
         "run_command",
-        "git_commit", "git_push",
+        "git_commit",
+        "git_push",
         "http_request",
+        "start_background",
+        "get_background_output",
+        "stop_background",
     },
 }
 

@@ -14,6 +14,8 @@ import subprocess
 from typing import Callable
 import httpx
 import sys
+import threading
+import uuid
 from mcp.server.fastmcp import FastMCP
 from tools import TOOL_SETS, is_tool_allowed
 from validation import ValidationError, safe_command, safe_path, safe_url
@@ -21,6 +23,12 @@ from validation import ValidationError, safe_command, safe_path, safe_url
 mcp = FastMCP("sandbox-server")
 
 AGENT_ROLE = os.environ.get("AGENT_ROLE", "")
+
+_background_processes: dict[str, dict] = {}
+
+def _reader_thread(proc, output_buffer):
+    for line in proc.stdout:
+        output_buffer.append(line)
 
 @mcp._mcp_server.list_tools()
 async def filtered_list_tools():
@@ -198,6 +206,51 @@ def http_request(url: str, method: str = "GET", body: str | None = None) -> str:
     except httpx.RequestError as exc:
         return f"ERROR: request failed: {exc}"
     return f"Status: {response.status_code}\n{response.text}"
+
+@mcp.tool()
+@require_role
+def start_background(command: str) -> str:
+    try:
+        parts = safe_command(command)
+    except ValidationError as e:
+        return f"ERROR: {e}"
+    workspace = os.environ.get("WORKSPACE_ROOT", "/workspace")
+    try:
+        proc = subprocess.Popen(
+            parts, cwd=workspace, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, start_new_session=True,
+        )
+    except OSError as e:
+        return f"ERROR: could not start process: {e}"
+    process_id = str(uuid.uuid4())[:8]
+    output_buffer: list[str] = []
+    thread = threading.Thread(target=_reader_thread, args=(proc, output_buffer), daemon=True)
+    thread.start()
+    _background_processes[process_id] = {"proc": proc, "output": output_buffer}
+    return f"Started background process, process_id={process_id}"
+ 
+@mcp.tool()
+@require_role
+def get_background_output(process_id: str) -> str:
+    entry = _background_processes.get(process_id)
+    if not entry:
+        return f"ERROR: unknown process_id {process_id}"
+    running = entry["proc"].poll() is None
+    return f"running={running}\n{''.join(entry['output'])}"
+
+@mcp.tool()
+@require_role
+def stop_background(process_id: str) -> str:
+    """Stop a background process started with start_background."""
+    entry = _background_processes.get(process_id)
+    if not entry:
+        return f"ERROR: unknown process_id {process_id}"
+    entry["proc"].terminate()
+    try:
+        entry["proc"].wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        entry["proc"].kill()
+    return f"Stopped {process_id}"
 
 if __name__ == "__main__":
     if not AGENT_ROLE:
