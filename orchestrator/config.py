@@ -12,3 +12,4 @@ REQUIRED_TOOL = {
 RUN_LOGS_DIR = PROJECT_ROOT / "results" / "run_logs"
 PROMPT_DIR = PROJECT_ROOT / "prompts"
 USED_MODEL = "llama-3.3-70b-versatile"
+APP_PORT = 8000
