@@ -1,9 +1,9 @@
 import sys
 import os
+import re
 from pathlib import Path
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp import ClientSession
-from mcp.server.fastmcp import tools
 import config
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
@@ -14,11 +14,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
 from screens import start_screen, get_spec, checkpoint_screen, done_screen
 import subprocess
 
+def extract_project_name(text: str) -> str | None:
+    match = re.search(r"^PROJECT[_-]NAME:\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
+    return match.group(1).strip() if match else None
+ 
+def prepare_project_dir(workspace: Path) -> str | None:
+    tests_md = workspace / "tests.md"
+    test_file = workspace / "test_solution.py"
+    if not tests_md.exists() or not test_file.exists():
+        return None
+ 
+    project_name = extract_project_name(tests_md.read_text())
+    if not project_name:
+        return None
+ 
+    project_dir = workspace / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "test_solution.py").write_text(test_file.read_text())
+    return project_name
+
 def load_prompt(role: str) -> str:
     prompt_path = config.PROMPT_DIR / f"{role}.md"
     return prompt_path.read_text() if prompt_path.exists() else ""
     
-
 def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     return StdioServerParameters(
         command="docker",
@@ -26,6 +44,7 @@ def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
             "run", "-i", "--rm",
              "--user", f"{os.getuid()}:{os.getgid()}",
             "-e", f"AGENT_ROLE={role}",
+            "-e", "HOME=/tmp",
             "-v", f"{workspace}:/workspace",
             "-p", f"{config.APP_PORT}:{config.APP_PORT}",
             config.DOCKER_IMAGE,

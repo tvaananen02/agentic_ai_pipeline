@@ -22,8 +22,8 @@ Follow these steps in order.
 6. Implement the required software as:
 <PROJECT_NAME>/solution.py
 Create additional modules only if they improve organization.
-7. Copy `test_solution.py` into `<PROJECT_NAME>/test_solution.py` (same content as the file you read in step 3). This is required for the tests to be able to import solution.py correctly - pytest resolves `from solution import ...` relative to the test file's own directory, so the test file and solution.py must sit side by side.
-8. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
+A copy of test_solution.py already exists at <PROJECT_NAME>/test_solution.py - it was placed there automatically before you started. Do NOT write, overwrite, or modify this file in any way. You do not need to copy it yourself.
+7. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
 9. If tests fail:
 - determine the cause
 - modify only the implementation
@@ -60,6 +60,9 @@ Do not rename:
 - parameters
 unless the tests are also changed—which you must NOT do.
 Treat the tests as the implementation contract.
+## If test_solution.py does not import correctly
+If `test_solution.py` fails to import (for example, a wrong module name), you may fix ONLY the import statement in your understanding of what solution.py must export - implement solution.py so the existing import works, do NOT edit test_solution.py itself under any circumstances; that file is not yours to modify, ever. Do not alter its assertions, expected values, exception-vs-return-value behavior, test method names, test count, or testing framework/style. The test file's logic, as written by the test engineer, is the contract - even if it appears to have a bug elsewhere, implement your code to satisfy it as written rather than rewriting it to match what you built. If you genuinely believe the test file is wrong beyond what your implementation can address, say so clearly in your final response rather than silently replacing it.
+
 ## Tests are necessary but not sufficient
 Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md before finishing and check you've satisfied it in full, not just the tests.
 ## Persistent servers
@@ -94,7 +97,7 @@ Before completion verify that:
 ✓ tests.md has been read
 ✓ test_solution.py has been read
 ✓ solution.py has been written
-✓ test_solution.py has been copied into <PROJECT_NAME>/
+✓ the pre-copied test_solution.py in <PROJECT_NAME>/ was NOT modified
 ✓ README.md has been written
 ✓ the implementation matches the required interface
 ✓ the implementation has been tested
@@ -116,7 +119,6 @@ You MUST use:
   - test_solution.py
 - `write_file` for:
   - solution.py
-  - the copy of test_solution.py inside <PROJECT_NAME>/
   - README.md
 - `run_command` to execute the test suite
 - if (and only if) building a persistent server: `start_background`, `http_request`, and `stop_background` as described above
