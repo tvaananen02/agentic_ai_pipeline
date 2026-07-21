@@ -52,10 +52,17 @@ def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     )
 
 def build_provider(role: str) -> OpenAICompatibleProvider:
+    if config.MODEL_PROFILE == "llamacpp":
+        return OpenAICompatibleProvider(
+            model=config.LLAMACPP_MODEL,
+            base_url=config.LLAMACPP_BASE_URL,
+            api_key="not-needed",
+        )
     return OpenAICompatibleProvider(
         model=config.USED_MODEL, 
         base_url="https://api.groq.com/openai/v1", 
-        api_key=os.environ["GROQ_API_KEY"])
+        api_key=os.environ["GROQ_API_KEY"]
+    )
 
 
 def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
