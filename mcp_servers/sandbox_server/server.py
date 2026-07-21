@@ -74,6 +74,9 @@ def write_file(path: str, content: str) -> str:
         target = safe_path(path)
     except ValidationError as e:
         return f"ERROR: {e}"
+    # check against a failure mode where the model sometimes double escapes newlines when generating a write_file tool call's JSON-argumentss    
+    if "\\n" in content and "\n" not in content:
+        content = content.replace("\\n", "\n").replace("\\t", "\t")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
