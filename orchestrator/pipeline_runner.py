@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
 import subprocess
 
 from screens import checkpoint_screen, done_screen, get_spec, start_screen
-
+from alt_engines import run_claude_code, run_opencode, find_project_dir, verify_via_filesystem
 
 def extract_project_name(text: str) -> str | None:
     match = re.search(r"^PROJECT[_-]NAME:\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
@@ -191,6 +191,30 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
         f"App container '{container_name}' started (docker stop {container_name} to stop it)."
     )
     return f"http://localhost:{config.APP_PORT}"
+
+def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
+    prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
+    if engine == "claude":
+        output, return_code =  run_claude_code(prompt, workspace)
+    elif engine == "opencode":
+        output, return_code = run_opencode(prompt, workspace)
+    else:
+        raise ValueError(f"Unknown engine: {engine}")
+
+    print(f"[{engine}] finished, returncode={return_code}")
+    print(f"[{engine}] output: {output[:500]}")
+
+    project_name = find_project_dir(workspace)
+    if not project_name:
+        print(f"[{engine}] AUTO-REJECTED - could not find a project directory with solution.py + test_solution.py")
+        return False, output
+
+    passed, verify_output = verify_via_filesystem(workspace, project_name)
+    if not passed:
+        print(f"[{engine}] AUTO-REJECTED - tests did not actually pass:\n{verify_output[:500]}")
+        return False, output
+
+    return True, output
 
 
 async def main():
