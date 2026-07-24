@@ -16,4 +16,4 @@ APP_PORT = 8000
 MODEL_PROFILE = os.environ.get("MODEL_PROFILE", "groq")  # "groq" or "llamacpp"
 LLAMACPP_BASE_URL = os.environ.get("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
 LLAMACPP_MODEL = os.environ.get("LLAMACPP_MODEL", "local-model")
-
+ENGINE = os.environ.get("ENGINE", "mcp")  # "mcp", "claude_code", or "opencode"

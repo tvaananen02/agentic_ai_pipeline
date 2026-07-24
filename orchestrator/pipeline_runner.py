@@ -15,7 +15,6 @@ from tool_loop import run_tool_loop
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
 import subprocess
-
 from screens import checkpoint_screen, done_screen, get_spec, start_screen
 from alt_engines import run_claude_code, run_opencode, find_project_dir, verify_via_filesystem
 
@@ -194,7 +193,7 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
 
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
-    if engine == "claude":
+    if engine == "claude_code":
         output, return_code =  run_claude_code(prompt, workspace)
     elif engine == "opencode":
         output, return_code = run_opencode(prompt, workspace)
@@ -227,10 +226,18 @@ async def main():
     workspace = config.DEMO_PROJECT_DIR / "test_run"
     os.makedirs(workspace, exist_ok=True)
     os.makedirs(config.RUN_LOGS_DIR, exist_ok=True)
-
     log_path = config.RUN_LOGS_DIR / "test_run.json"
     state = PipelineState(spec=spec, project_slug="test_run", workspace=str(workspace))
-
+    if config.ENGINE != "mcp":
+        approved, output = run_alt_engine(config.ENGINE, workspace, spec)
+        state.record(config.ENGINE, output, approved)
+        state.save(log_path)
+        decision = checkpoint_screen(config.ENGINE, output) if approved else "reject"
+        if decision != "approve":
+            print(f"{config.ENGINE}: Not approved, stopping.")
+            return
+        done_screen(workspace, log_path)
+        return
     last_tool_calls: list[dict] = []
     for role in config.PIPELINE_ORDER:
         approved, tool_calls = await run_stage(role, workspace, spec, state, log_path)
@@ -238,6 +245,12 @@ async def main():
             print(f"{role}: Not approved, stopping pipeline.")
             return
         last_tool_calls = tool_calls if role == "se_engineer" else last_tool_calls
+        if role == "tester":
+            project_name = prepare_project_dir(workspace)
+            if project_name:
+                print(f"Project directory '{project_name}' created, test file copied in (deterministically, not by the agent).")
+            else:
+                print("WARNING: could not determine project name / find test files - se_engineer will need to set up the project directory itself.")
     url = launch_persistent_app(last_tool_calls, workspace)
     done_screen(workspace, log_path)
     if url:
