@@ -79,20 +79,7 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         api_key=os.environ["GROQ_API_KEY"],
     )
 
-
-def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
-    return any(tc["name"] == name for tc in tool_calls)
-
-
-def _pytest_passed(result_text: str) -> bool:
-    return bool (
-        "--- exit code: 0 ---" in result_text
-        and re.search(r"\bpassed\b", result_text, re.IGNORECASE)
-        and not re.search(r"\b(?:failed|error)\b", result_text, re.IGNORECASE)
-    )
-
-
-def _validate_stage(role: str, tool_calls: list[dict]) -> str | None:
+def _validate_stage(role: str, tool_calls: list[dict], workspace: Path) -> str | None:
     write_calls = [tc for tc in tool_calls if tc["name"] == "write_file"]
 
     if role in ("re_engineer", "se_engineer") and not write_calls:
@@ -109,8 +96,12 @@ def _validate_stage(role: str, tool_calls: list[dict]) -> str | None:
         run_calls = [tc for tc in tool_calls if tc["name"] == "run_command"]
         if not run_calls:
             return "never called run_command"
-        if not _pytest_passed(run_calls[-1]["arguments"].get("result", "")):
-            return f"tests did not actually pass - last result: {run_calls[-1].get('result', '')[:300]}"
+        project_name = find_project_dir(workspace)
+        if not project_name:
+            return "no project directory found"
+        passed, verify_output = verify_via_filesystem(workspace, project_name)
+        if not passed:
+            return f"verification failed(orchestrator re-ran pytest independently): {verify_output[:300]}"
 
     return None
 
@@ -136,10 +127,10 @@ async def run_stage(
             )
             print(f"{role}: Result:", result)
 
-            rejection_reason = _validate_stage(role, tools_called)
-            if rejection_reason:
+            possible_rejection = _validate_stage(role, tools_called, workspace)
+            if possible_rejection:
                 print(
-                    f"{role}: AUTO-REJECTED - {rejection_reason}. Tool calls: {[c['name'] for c in tools_called]}"
+                    f"{role}: AUTO-REJECTED - {possible_rejection}. Tool calls: {[c['name'] for c in tools_called]}"
                 )
                 state.record(role, result, approved=False)
                 state.save(log_path)
