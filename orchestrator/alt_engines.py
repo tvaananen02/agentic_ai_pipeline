@@ -8,10 +8,7 @@ from pathlib import Path
 
 def run_claude_code(prompt: str, workspace: Path, timeout: int = 300) -> tuple[str, int]:
     result = subprocess.run(
-        [
-            "claude", "-p", prompt,
-            "allowedTools","mcp__sandbox__*"
-        ],
+        ["claude", "-p", prompt,"allowedTools","mcp__sandbox__*"],
         cwd=workspace,
         text=True,
         capture_output=True,

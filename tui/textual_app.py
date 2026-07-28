@@ -1,14 +1,5 @@
 """
 Textual-based TUI for the pipeline. Replaces the simple_term_menu screens.
-
-Key design point, confirmed by direct testing before writing this: Textual
-runs the terminal in raw mode, so Ctrl+C does NOT raise KeyboardInterrupt
-the way it did with simple_term_menu/plain input(). Instead, Ctrl+C is
-bound explicitly (see BINDINGS) to cancel the currently running pipeline
-worker - asyncio.CancelledError from worker cancellation was confirmed to
-correctly propagate through `async with stdio_client(...)` and run its
-cleanup, same end result as the old KeyboardInterrupt path, just a
-different trigger mechanism.
 """
 
 from __future__ import annotations
@@ -19,8 +10,7 @@ from textual.widgets.option_list import Option
 from textual.screen import Screen
 import sys
 import os
-from pathlib import Path
-
+from pathlib import PathS
 sys.path.insert(0, str(Path(__file__).parent.parent / "orchestrator"))
 import config
 from pipeline_runner import run_stage, launch_persistent_app, run_alt_engine, prepare_project_dir

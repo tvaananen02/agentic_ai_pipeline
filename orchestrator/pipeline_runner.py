@@ -2,17 +2,14 @@ import os
 import re
 import sys
 from pathlib import Path
-
 import config
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
 from interrupt import run_with_interrupt
 from state import PipelineState
 from tool_loop import run_tool_loop
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
 import subprocess
 from screens import checkpoint_screen, done_screen, get_spec, start_screen
@@ -21,7 +18,6 @@ from alt_engines import run_claude_code, run_opencode, find_project_dir, verify_
 def extract_project_name(text: str) -> str | None:
     match = re.search(r"^PROJECT[_-]NAME:\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
     return match.group(1).strip() if match else None
-
 
 def prepare_project_dir(workspace: Path) -> str | None:
     tests_md = workspace / "tests.md"
@@ -38,11 +34,9 @@ def prepare_project_dir(workspace: Path) -> str | None:
     (project_dir / "test_solution.py").write_text(test_file.read_text())
     return project_name
 
-
 def load_prompt(role: str) -> str:
     prompt_path = config.PROMPT_DIR / f"{role}.md"
     return prompt_path.read_text() if prompt_path.exists() else ""
-
 
 def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     return StdioServerParameters(
@@ -111,9 +105,7 @@ def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
     return matches[-1] if matches else None
 
 
-async def run_stage(
-    role: str, workspace: Path, user_input: str, state: PipelineState, log_path: Path
-):
+async def run_stage(role: str, workspace: Path, user_input: str, state: PipelineState, log_path: Path):
     """Returns (approved: bool, tool_calls: list[dict])."""
     params = build_docker_params(role, workspace)
     provider = build_provider(role)
@@ -147,11 +139,9 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
     bg_call = _find_last_call(tool_calls, "start_background")
     if not bg_call:
         return None
-
     command = bg_call["arguments"].get("command")
     if not command:
         return None
-
     container_name = f"agentic-app-{os.getpid()}"
     subprocess.run(
         [
@@ -177,9 +167,7 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
         ],
         check=False,
     )
-    print(
-        f"App container '{container_name}' started (docker stop {container_name} to stop it)."
-    )
+    print(f"App container '{container_name}' started (docker stop {container_name} to stop it).")
     return f"http://localhost:{config.APP_PORT}"
 
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
@@ -205,7 +193,6 @@ def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
         return False, output
 
     return True, output
-
 
 async def main():
     if not start_screen():
@@ -248,7 +235,6 @@ async def main():
         print(f"App is running: {url}")
     else:
         print("No persistent server was started - files are in the workspace above.")
-
 
 if __name__ == "__main__":
     run_with_interrupt(main())
