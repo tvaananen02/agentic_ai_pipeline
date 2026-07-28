@@ -10,8 +10,7 @@ def run_claude_code(prompt: str, workspace: Path, timeout: int = 300) -> tuple[s
     result = subprocess.run(
         [
             "claude", "-p", prompt,
-            "allowedTools", "Read, Write, Bash, Edit",
-            "--permission-mode", "acceptEdits"
+            "allowedTools","mcp__sandbox__*"
         ],
         cwd=workspace,
         text=True,
