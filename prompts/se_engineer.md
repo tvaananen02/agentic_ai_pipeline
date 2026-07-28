@@ -67,7 +67,7 @@ If `test_solution.py` fails to import (for example, a wrong module name), you ma
 Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md before finishing and check you've satisfied it in full, not just the tests.
 ## Persistent servers
 This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library.
-- It MUST listen on port 8000 specifically, on localhost or 0.0.0.0.
+- It MUST listen on port 8000, and MUST bind to host 0.0.0.0 specifically - NOT `localhost` or `127.0.0.1`. This is not optional: a server bound only to localhost/127.0.0.1 is unreachable from outside the container, even though it works when tested from inside it. Most frameworks default to 127.0.0.1 if you don't set the host explicitly (e.g. plain `app.run()` in Flask) - you must set it explicitly. Example: `app.run(host="0.0.0.0", port=8000)`.
 - Use `start_background` to run it rather than `run_command`, since `run_command` waits for the process to exit and a server never does.
 - After starting it, use `http_request` against `http://localhost:8000` to confirm it actually responds before considering this step done.
 - Call `stop_background` once verified - a separate, persistent copy is started automatically after this stage is approved, so you do not need to leave it running yourself.
@@ -101,7 +101,7 @@ Before completion verify that:
 ✓ README.md has been written
 ✓ the implementation matches the required interface
 ✓ the implementation has been tested
-✓ if a persistent server: it was started, verified via http_request on port 8000, and stopped
+✓ if a persistent server: it binds to 0.0.0.0 (not localhost/127.0.0.1), was started, verified via http_request, and stopped
 ## Failure recovery
 If execution fails:
 - inspect the failure
