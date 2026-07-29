@@ -1,7 +1,6 @@
 """
-Textual-based TUI for the pipeline. Replaces the simple_term_menu screens.
+Textual-based TUI for the pipeline.
 """
-
 from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -10,12 +9,12 @@ from textual.widgets.option_list import Option
 from textual.screen import Screen
 import sys
 import os
-from pathlib import PathS
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "orchestrator"))
 import config
-from pipeline_runner import run_stage, launch_persistent_app, run_alt_engine, prepare_project_dir
+from pipeline_runner import run_pipeline
 from state import PipelineState
-import asyncio
 
 
 class StartScreen(Screen):
@@ -127,46 +126,10 @@ class PipelineApp(App):
         async def checkpoint_fn(role: str, artifact: str) -> str:
             return await self.push_screen_wait(CheckpointScreen(role, artifact))
 
-        if config.ENGINE != "mcp":
-            running.set_role(config.ENGINE)
-            running.log_line(f"Running via {config.ENGINE} (this can take a while)...")
-            # run_alt_engine is a blocking sync call (subprocess.run inside it) -
-            # run it in a thread so it doesn't freeze the whole UI event loop.
-            approved, output = await asyncio.to_thread(run_alt_engine, config.ENGINE, workspace, self.spec)
-            running.log_line(output[:1000])
-            state.record(config.ENGINE, output, approved)
-            state.save(log_path)
-            if not approved:
-                running.log_line(f"{config.ENGINE}: AUTO-REJECTED, stopping.")
-                return
-            decision = await checkpoint_fn(config.ENGINE, output)
-            if decision != "approve":
-                running.log_line(f"{config.ENGINE}: Not approved, stopping.")
-                return
-            running.log_line(f"Done. Files in {workspace}")
-            return
-
-        last_tool_calls: list[dict] = []
-        for role in config.PIPELINE_ORDER:
-            running.set_role(role)
-            approved, tool_calls = await run_stage(
-                role, workspace, self.spec, state, log_path,
-                log_fn=running.log_line, checkpoint_fn=checkpoint_fn,
-            )
-            if role == "se_engineer":
-                last_tool_calls = tool_calls
-            if not approved:
-                running.log_line(f"{role}: Not approved, stopping.")
-                return
-            if role == "tester":
-                project_name = prepare_project_dir(workspace)
-                if project_name:
-                    running.log_line(f"Project directory '{project_name}' created, test file copied in (deterministically).")
-                else:
-                    running.log_line("WARNING: could not determine project name / find test files.")
-
-        url = launch_persistent_app(last_tool_calls, workspace)
-        running.log_line(f"Done. App running: {url}" if url else "Done. No persistent server started.")
+        await run_pipeline(
+            config.ENGINE, self.spec, workspace, log_path, state,
+            checkpoint_fn=checkpoint_fn, log_fn=running.log_line, role_fn=running.set_role,
+        )
 
 
 if __name__ == "__main__":

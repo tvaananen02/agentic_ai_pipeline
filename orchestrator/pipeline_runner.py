@@ -1,23 +1,33 @@
-import os
+import asyncio
 import re
 import sys
+import os
+import subprocess
+import threading
+import time
+import subprocess
 from pathlib import Path
-import config
-from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp import ClientSession
+import config
+from state import PipelineState
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
-from interrupt import run_with_interrupt
-from state import PipelineState
 from tool_loop import run_tool_loop
-sys.path.insert(0, str(Path(__file__).parent.parent / "tui"))
-import subprocess
-from screens import checkpoint_screen, done_screen, get_spec, start_screen
 from alt_engines import run_claude_code, run_opencode, find_project_dir, verify_via_filesystem
 
+
 def extract_project_name(text: str) -> str | None:
-    match = re.search(r"^PROJECT[_-]NAME:\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
-    return match.group(1).strip() if match else None
+    # Primary: a PROJECT_NAME/PROJECT-NAME line, any case, optional leading '#'
+    match = re.search(r"^#?\s*PROJECT[_-]NAME:?\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
+    if match:
+        return match.group(1).strip().rstrip(":").strip()
+    # Fallback: agents sometimes write a bare markdown header instead
+    # (e.g. "# quote-finder:") with no PROJECT_NAME phrase at all.
+    first_line = next((l for l in text.splitlines() if l.strip()), "")
+    header_match = re.match(r"^#\s*([a-zA-Z0-9\-_]+)\s*:?\s*$", first_line.strip())
+    return header_match.group(1).strip() if header_match else None
+
 
 def prepare_project_dir(workspace: Path) -> str | None:
     tests_md = workspace / "tests.md"
@@ -42,23 +52,15 @@ def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     return StdioServerParameters(
         command="docker",
         args=[
-            "run",
-            "-i",
-            "--rm",
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
-            "-e",
-            f"AGENT_ROLE={role}",
-            "-e",
-            "HOME=/tmp",
-            "-v",
-            f"{workspace}:/workspace",
-            "-p",
-            f"{config.APP_PORT}:{config.APP_PORT}",
+            "run", "-i", "--rm",
+            "--user", f"{os.getuid()}:{os.getgid()}",
+            "-e", f"AGENT_ROLE={role}",
+            "-e", "HOME=/tmp",
+            "-p", f"{config.APP_PORT}:{config.APP_PORT}",
+            "-v", f"{workspace}:/workspace",
             config.DOCKER_IMAGE,
         ],
     )
-
 
 def build_provider(role: str) -> OpenAICompatibleProvider:
     if config.MODEL_PROFILE == "llamacpp":
@@ -73,7 +75,11 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         api_key=os.environ["GROQ_API_KEY"],
     )
 
+def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
+    return any(tc["name"] == name for tc in tool_calls)
+
 def _validate_stage(role: str, tool_calls: list[dict], workspace: Path) -> str | None:
+    """Returns None if OK, or a rejection reason string."""
     write_calls = [tc for tc in tool_calls if tc["name"] == "write_file"]
 
     if role in ("re_engineer", "se_engineer") and not write_calls:
@@ -87,25 +93,31 @@ def _validate_stage(role: str, tool_calls: list[dict], workspace: Path) -> str |
             return "never wrote test_solution.py (TDD requires real test code, not just descriptions)"
 
     if role == "se_engineer":
-        run_calls = [tc for tc in tool_calls if tc["name"] == "run_command"]
-        if not run_calls:
-            return "never called run_command"
+        if not _tool_was_called(tool_calls, "run_command"):
+            return "never called run_command to run the tests"
+
         project_name = find_project_dir(workspace)
         if not project_name:
-            return "no project directory found"
+            return "could not find a project directory containing both solution.py and test_solution.py"
         passed, verify_output = verify_via_filesystem(workspace, project_name)
         if not passed:
-            return f"verification failed(orchestrator re-ran pytest independently): {verify_output[:300]}"
+            return f"deterministic verification failed (orchestrator re-ran pytest independently, ignoring the agent's own self-report): {verify_output[:300]}"
 
     return None
-
 
 def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
     matches = [tc for tc in tool_calls if tc["name"] == name]
     return matches[-1] if matches else None
 
-
-async def run_stage(role: str, workspace: Path, user_input: str, state: PipelineState, log_path: Path):
+async def run_stage(
+    role: str,
+    workspace: Path,
+    user_input: str,
+    state: PipelineState,
+    log_path: Path,
+    checkpoint_fn,
+    log_fn=print,
+):
     """Returns (approved: bool, tool_calls: list[dict])."""
     params = build_docker_params(role, workspace)
     provider = build_provider(role)
@@ -113,26 +125,47 @@ async def run_stage(role: str, workspace: Path, user_input: str, state: Pipeline
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            print(f"{role}: Connected, starting...")
-            result, tools_called = await run_tool_loop(
-                provider, session, load_prompt(role), user_input
-            )
-            print(f"{role}: Result:", result)
+            log_fn(f"{role}: Connected, starting...")
+            result, tool_calls = await run_tool_loop(provider, session, load_prompt(role), user_input, log_fn=log_fn)
+            log_fn(f"{role}: Result: {result}")
 
-            possible_rejection = _validate_stage(role, tools_called, workspace)
-            if possible_rejection:
-                print(
-                    f"{role}: AUTO-REJECTED - {possible_rejection}. Tool calls: {[c['name'] for c in tools_called]}"
-                )
+            rejection_reason = _validate_stage(role, tool_calls, workspace)
+            if rejection_reason:
+                log_fn(f"{role}: AUTO-REJECTED - {rejection_reason}. Tool calls: {[c['name'] for c in tool_calls]}")
                 state.record(role, result, approved=False)
                 state.save(log_path)
-                return False, tools_called
+                return False, tool_calls
 
-            decision = checkpoint_screen(role, result)
+            decision = await checkpoint_fn(role, result)
             approved = decision == "approve"
             state.record(role, result, approved)
             state.save(log_path)
-            return approved, tools_called
+            return approved, tool_calls
+
+
+def start_tunnel(port: int, timeout_seconds: int = 20) -> tuple[str | None, subprocess.Popen]:
+    proc = subprocess.Popen(
+        ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    output_buffer: list[str] = []
+
+    def _reader():
+        for line in proc.stdout:
+            output_buffer.append(line)
+
+    threading.Thread(target=_reader, daemon=True).start()
+
+    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+\.trycloudflare\.com")
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        match = url_pattern.search("".join(output_buffer))
+        if match:
+            return match.group(0), proc
+        time.sleep(0.5)
+
+    proc.terminate()
+    return None, proc
 
 
 def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None:
@@ -145,25 +178,15 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
     container_name = f"agentic-app-{os.getpid()}"
     subprocess.run(
         [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            container_name,
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
-            "-e",
-            "HOME=/tmp",
-            "-p",
-            f"{config.APP_PORT}:{config.APP_PORT}",
-            "-v",
-            f"{workspace}:/workspace",
-            "--entrypoint",
-            "",
+            "docker", "run", "-d",
+            "--name", container_name,
+            "--user", f"{os.getuid()}:{os.getgid()}",
+            "-e", "HOME=/tmp",
+            "-p", f"{config.APP_PORT}:{config.APP_PORT}",
+            "-v", f"{workspace}:/workspace",
+            "--entrypoint", "",
             config.DOCKER_IMAGE,
-            "sh",
-            "-c",
-            f"cd /workspace && {command}",
+            "sh", "-c", f"cd /workspace && {command}",
         ],
         check=False,
     )
@@ -173,68 +196,74 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
     if engine == "claude_code":
-        output, return_code =  run_claude_code(prompt, workspace)
+        output, returncode = run_claude_code(prompt, workspace)
     elif engine == "opencode":
-        output, return_code = run_opencode(prompt, workspace)
+        output, returncode = run_opencode(prompt, workspace)
     else:
-        raise ValueError(f"Unknown engine: {engine}")
-
-    print(f"[{engine}] finished, returncode={return_code}")
+        raise ValueError(f"Unknown config.ENGINE: {engine}")
+    print(f"[{engine}] finished, returncode={returncode}")
     print(f"[{engine}] output: {output[:500]}")
-
     project_name = find_project_dir(workspace)
     if not project_name:
         print(f"[{engine}] AUTO-REJECTED - could not find a project directory with solution.py + test_solution.py")
         return False, output
-
     passed, verify_output = verify_via_filesystem(workspace, project_name)
     if not passed:
         print(f"[{engine}] AUTO-REJECTED - tests did not actually pass:\n{verify_output[:500]}")
         return False, output
-
     return True, output
 
-async def main():
-    if not start_screen():
-        return
-    spec = get_spec()
-    if not spec:
-        print("No spec given, exiting.")
-        return
-    workspace = config.DEMO_PROJECT_DIR / "test_run"
-    os.makedirs(workspace, exist_ok=True)
-    os.makedirs(config.RUN_LOGS_DIR, exist_ok=True)
-    log_path = config.RUN_LOGS_DIR / "test_run.json"
-    state = PipelineState(spec=spec, project_slug="test_run", workspace=str(workspace))
-    if config.ENGINE != "mcp":
-        approved, output = run_alt_engine(config.ENGINE, workspace, spec)
-        state.record(config.ENGINE, output, approved)
+
+async def run_pipeline(
+    engine: str,
+    spec: str,
+    workspace: Path,
+    log_path: Path,
+    state: PipelineState,
+    checkpoint_fn,
+    log_fn=print,
+    role_fn=lambda role: None,
+) -> str | None:
+
+    if engine != "mcp":
+        role_fn(engine)
+        approved, output = await asyncio.to_thread(run_alt_engine, engine, workspace, spec)
+        state.record(engine, output, approved)
         state.save(log_path)
-        decision = checkpoint_screen(config.ENGINE, output) if approved else "reject"
+        if not approved:
+            log_fn(f"{engine}: AUTO-REJECTED, stopping.")
+            return None
+        decision = await checkpoint_fn(engine, output)
         if decision != "approve":
-            print(f"{config.ENGINE}: Not approved, stopping.")
-            return
-        done_screen(workspace, log_path)
-        return
+            log_fn(f"{engine}: Not approved, stopping.")
+            return None
+        log_fn(f"Done. Files in {workspace}")
+        return None
+
     last_tool_calls: list[dict] = []
     for role in config.PIPELINE_ORDER:
-        approved, tool_calls = await run_stage(role, workspace, spec, state, log_path)
+        role_fn(role)
+        approved, tool_calls = await run_stage(role, workspace, spec, state, log_path, log_fn=log_fn, checkpoint_fn=checkpoint_fn)
+        if role == "se_engineer":
+            last_tool_calls = tool_calls
         if not approved:
-            print(f"{role}: Not approved, stopping pipeline.")
-            return
-        last_tool_calls = tool_calls if role == "se_engineer" else last_tool_calls
+            log_fn(f"{role}: Not approved, stopping pipeline.")
+            return None
         if role == "tester":
             project_name = prepare_project_dir(workspace)
-            if project_name:
-                print(f"Project directory '{project_name}' created, test file copied in (deterministically, not by the agent).")
-            else:
-                print("WARNING: could not determine project name / find test files - se_engineer will need to set up the project directory itself.")
+            log_fn(
+                f"Project directory '{project_name}' created, test file copied in."
+                if project_name else
+                "WARNING: could not determine project name / find test files."
+            )
     url = launch_persistent_app(last_tool_calls, workspace)
-    done_screen(workspace, log_path)
-    if url:
-        print(f"App is running: {url}")
+    if not url:
+        log_fn("No persistent server was started - files are in the workspace above.")
+        return None
+    log_fn(f"App running locally: {url}")
+    public_url, _tunnel_proc = await asyncio.to_thread(start_tunnel, config.APP_PORT)
+    if public_url:
+        log_fn(f"App is live on the internet: {public_url}")
     else:
-        print("No persistent server was started - files are in the workspace above.")
-
-if __name__ == "__main__":
-    run_with_interrupt(main())
+        log_fn("Could not establish a public tunnel - still reachable locally.")
+    return public_url
