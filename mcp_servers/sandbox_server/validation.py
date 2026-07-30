@@ -21,6 +21,7 @@ ALLOWED_COMMANDS: set[str] = {
     "npx",
     "pytest",
     "git",
+    "flask",
 }
 
 WHITELISTED_DOMAINS: set[str] = {
