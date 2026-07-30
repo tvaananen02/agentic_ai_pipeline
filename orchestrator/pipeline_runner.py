@@ -5,7 +5,6 @@ import os
 import subprocess
 import threading
 import time
-import subprocess
 from pathlib import Path
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp import ClientSession
@@ -14,7 +13,8 @@ from state import PipelineState
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
 from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
-from alt_engines import run_claude_code, run_opencode, find_project_dir, verify_via_filesystem
+from alt_engines import run_claude_code, run_opencode
+from project_layout import verify_via_filesystem
 
 
 def extract_project_name(text: str) -> str | None:
@@ -44,9 +44,11 @@ def prepare_project_dir(workspace: Path) -> str | None:
     (project_dir / "test_solution.py").write_text(test_file.read_text())
     return project_name
 
+
 def load_prompt(role: str) -> str:
     prompt_path = config.PROMPT_DIR / f"{role}.md"
     return prompt_path.read_text() if prompt_path.exists() else ""
+
 
 def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     return StdioServerParameters(
@@ -62,6 +64,7 @@ def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
         ],
     )
 
+
 def build_provider(role: str) -> OpenAICompatibleProvider:
     if config.MODEL_PROFILE == "llamacpp":
         return OpenAICompatibleProvider(
@@ -75,16 +78,16 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         api_key=os.environ["GROQ_API_KEY"],
     )
 
+
 def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
     return any(tc["name"] == name for tc in tool_calls)
 
-def _validate_stage(role: str, tool_calls: list[dict], workspace: Path) -> str | None:
+
+def _validate_stage(role: str, tool_calls: list[dict], workspace: Path, project_name: str | None = None) -> str | None:
     """Returns None if OK, or a rejection reason string."""
     write_calls = [tc for tc in tool_calls if tc["name"] == "write_file"]
-
     if role in ("re_engineer", "se_engineer") and not write_calls:
         return "never called write_file"
-
     if role == "tester":
         paths = {c["arguments"].get("path") for c in write_calls}
         if "tests.md" not in paths:
@@ -92,22 +95,27 @@ def _validate_stage(role: str, tool_calls: list[dict], workspace: Path) -> str |
         if "test_solution.py" not in paths:
             return "never wrote test_solution.py (TDD requires real test code, not just descriptions)"
 
+        test_content = next(
+            (c["arguments"].get("content", "") for c in write_calls
+             if c["arguments"].get("path") == "test_solution.py"),
+            "",
+        )
+        try:
+            compile(test_content, "test_solution.py", "exec")
+        except SyntaxError as e:
+            return f"test_solution.py has a syntax error and would never run: {e}"
     if role == "se_engineer":
-        if not _tool_was_called(tool_calls, "run_command"):
-            return "never called run_command to run the tests"
-
-        project_name = find_project_dir(workspace)
-        if not project_name:
-            return "could not find a project directory containing both solution.py and test_solution.py"
-        passed, verify_output = verify_via_filesystem(workspace, project_name)
+        passed, verify_output = verify_via_filesystem(workspace, project_name or "project")
         if not passed:
-            return f"deterministic verification failed (orchestrator re-ran pytest independently, ignoring the agent's own self-report): {verify_output[:300]}"
-
+            note = "" if _tool_was_called(tool_calls, "run_command") else " (agent never even attempted to run the tests itself)"
+            return f"deterministic verification failed{note} (orchestrator re-ran pytest independently, ignoring the agent's own self-report): {verify_output[:300]}"
     return None
+
 
 def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
     matches = [tc for tc in tool_calls if tc["name"] == name]
     return matches[-1] if matches else None
+
 
 async def run_stage(
     role: str,
@@ -117,6 +125,7 @@ async def run_stage(
     log_path: Path,
     checkpoint_fn,
     log_fn=print,
+    project_name: str | None = None,
 ):
     """Returns (approved: bool, tool_calls: list[dict])."""
     params = build_docker_params(role, workspace)
@@ -129,7 +138,7 @@ async def run_stage(
             result, tool_calls = await run_tool_loop(provider, session, load_prompt(role), user_input, log_fn=log_fn)
             log_fn(f"{role}: Result: {result}")
 
-            rejection_reason = _validate_stage(role, tool_calls, workspace)
+            rejection_reason = _validate_stage(role, tool_calls, workspace, project_name)
             if rejection_reason:
                 log_fn(f"{role}: AUTO-REJECTED - {rejection_reason}. Tool calls: {[c['name'] for c in tool_calls]}")
                 state.record(role, result, approved=False)
@@ -193,6 +202,7 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
     print(f"App container '{container_name}' started (docker stop {container_name} to stop it).")
     return f"http://localhost:{config.APP_PORT}"
 
+
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
     if engine == "claude_code":
@@ -203,11 +213,7 @@ def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
         raise ValueError(f"Unknown config.ENGINE: {engine}")
     print(f"[{engine}] finished, returncode={returncode}")
     print(f"[{engine}] output: {output[:500]}")
-    project_name = find_project_dir(workspace)
-    if not project_name:
-        print(f"[{engine}] AUTO-REJECTED - could not find a project directory with solution.py + test_solution.py")
-        return False, output
-    passed, verify_output = verify_via_filesystem(workspace, project_name)
+    passed, verify_output = verify_via_filesystem(workspace, "project")
     if not passed:
         print(f"[{engine}] AUTO-REJECTED - tests did not actually pass:\n{verify_output[:500]}")
         return False, output
@@ -241,9 +247,13 @@ async def run_pipeline(
         return None
 
     last_tool_calls: list[dict] = []
+    project_name = None
     for role in config.PIPELINE_ORDER:
         role_fn(role)
-        approved, tool_calls = await run_stage(role, workspace, spec, state, log_path, log_fn=log_fn, checkpoint_fn=checkpoint_fn)
+        approved, tool_calls = await run_stage(
+            role, workspace, spec, state, log_path,
+            log_fn=log_fn, checkpoint_fn=checkpoint_fn, project_name=project_name,
+        )
         if role == "se_engineer":
             last_tool_calls = tool_calls
         if not approved:
