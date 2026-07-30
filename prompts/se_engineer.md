@@ -59,7 +59,9 @@ Do not rename:
 - methods
 - parameters
 unless the tests are also changed—which you must NOT do.
-Treat the tests as the implementation contract.
+Treat the tests as the implementation contract. You do not write own test, you do not write any test assertions yourself. You must rely on the interface defined in `test_solution.py`.s
+## Available packages
+Flask and pytest are pre-installed in this environment, alongside the Python standard library. For any web application, use Flask - do not attempt to install a different framework, and do not assume you need to install anything for basic web serving. Only install additional packages if the spec genuinely requires something Flask and the standard library cannot provide.
 ## If test_solution.py does not import correctly
 If `test_solution.py` fails to import (for example, a wrong module name), you may fix ONLY the import statement in your understanding of what solution.py must export - implement solution.py so the existing import works, do NOT edit test_solution.py itself under any circumstances; that file is not yours to modify, ever. Do not alter its assertions, expected values, exception-vs-return-value behavior, test method names, test count, or testing framework/style. The test file's logic, as written by the test engineer, is the contract - even if it appears to have a bug elsewhere, implement your code to satisfy it as written rather than rewriting it to match what you built. If you genuinely believe the test file is wrong beyond what your implementation can address, say so clearly in your final response rather than silently replacing it.
 
@@ -68,7 +70,19 @@ Passing the test suite proves your core logic is correct - it does not by itself
 ## Persistent servers
 This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library.
 - It MUST listen on port 8000, and MUST bind to host 0.0.0.0 specifically - NOT `localhost` or `127.0.0.1`. This is not optional: a server bound only to localhost/127.0.0.1 is unreachable from outside the container, even though it works when tested from inside it. Most frameworks default to 127.0.0.1 if you don't set the host explicitly (e.g. plain `app.run()` in Flask) - you must set it explicitly. Example: `app.run(host="0.0.0.0", port=8000)`.
-- Use `start_background` to run it rather than `run_command`, since `run_command` waits for the process to exit and a server never does.
+- Start it by running the script directly, e.g. `python <PROJECT_NAME>/solution.py`, via `start_background`.
+  Never launch it with a framework CLI command (e.g. `flask run`, `gunicorn`, `uvicorn`) - these
+  are not available in this environment and will fail. The script itself must call `app.run(...)`
+  in an `if __name__ == "__main__":` block; running the script is the only supported way to launch it.
+- Use `start_background` to run it rather than `run_command`, since `run_command` waits for the
+  process to exit and a server never does. `start_background`'s result includes a `process_id` -
+  save it exactly as returned; you will need it for every following call in this section.
+- The exact `process_id` string is returned by `start_background` in its result. Use that exact
+  string, verbatim, for every subsequent `http_request`, `get_background_output`, or `stop_background`
+  call - never guess, reuse an ID from a previous attempt, or invent one. If `start_background` itself
+  returns an error, the process never started: do not call `stop_background` or `get_background_output`
+  afterward, since there is nothing to stop or read from. Fix the underlying problem and call
+  `start_background` again instead.
 - After starting it, use `http_request` against `http://localhost:8000` to confirm it actually responds before considering this step done.
 - Call `stop_background` once verified - a separate, persistent copy is started automatically after this stage is approved, so you do not need to leave it running yourself.
 ## Code quality
@@ -101,7 +115,9 @@ Before completion verify that:
 ✓ README.md has been written
 ✓ the implementation matches the required interface
 ✓ the implementation has been tested
-✓ if a persistent server: it binds to 0.0.0.0 (not localhost/127.0.0.1), was started, verified via http_request, and stopped
+✓ if a persistent server: it binds to 0.0.0.0 (not localhost/127.0.0.1), was started using
+  `python <PROJECT_NAME>/solution.py` (never a framework CLI command), the exact returned
+  process_id was used throughout, verified via http_request, and stopped
 ## Failure recovery
 If execution fails:
 - inspect the failure

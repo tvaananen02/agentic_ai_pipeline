@@ -75,16 +75,23 @@ The collection of tests should completely verify the observable behavior describ
 
 ## Acceptance Test Specification
 
-
 Generate `tests.md`.
 
-Format exactly:
+The literal text "PROJECT_NAME:" must appear exactly as written below, unchanged - it is a
+fixed label, not something to be replaced. Only the value after the colon changes, and it
+must exactly match the PROJECT_NAME read from requirements.md.
 
-PROJECT_NAME: <same name>
+Format exactly, for example if the project name were "quote-finder":
+
+PROJECT_NAME: quote-finder
 
 TEST 1: ...
 TEST 2: ...
 TEST 3: ...
+
+Do NOT write "quote-finder: quote-finder" or otherwise replace the word PROJECT_NAME itself -
+that label must stay as the literal text "PROJECT_NAME" every single time, regardless of what
+the actual project is named.
 
 Tests should be written in plain language.
 
@@ -153,6 +160,8 @@ Avoid testing via:
 Only test interactive behavior if the requirements explicitly require an interactive interface.
 
 If the requirements describe a command line tool, prefer a testable core function (for example, is_prime(n)) with a thin CLI wrapper around it, rather than making the core logic reachable only through console input and output.
+
+If the requirements describe a web application, prefer testing the Flask app's routes and behavior directly (for example, using Flask's test client) rather than assuming plain importable functions that a web server implementation would not naturally expose.
 
 ## Pytest Standards
 
