@@ -11,7 +11,7 @@ REQUIRED_TOOL = {
 }
 RUN_LOGS_DIR = PROJECT_ROOT / "results" / "run_logs"
 PROMPT_DIR = PROJECT_ROOT / "prompts"
-USED_MODEL = "llama-3.3-70b-versatile"
+USED_MODEL = os.environ.get("USED_MODEL", "llama-3.3-70b-versatile")
 APP_PORT = 8000
 MODEL_PROFILE = os.environ.get("MODEL_PROFILE", "groq")  # "groq" or "llamacpp"
 LLAMACPP_BASE_URL = os.environ.get("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
