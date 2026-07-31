@@ -52,27 +52,42 @@ class SpecScreen(Screen):
 class CheckpointScreen(Screen[str]):
     """Shown after each stage. Returns 'approve' or 'reject' via dismiss()."""
 
-    def __init__(self, role: str, artifact: str):
+    SKIP_DIRS = {".pytest_cache", "__pycache__", ".git"}
+
+    def __init__(self, role: str, artifact: str, workspace: Path):
         super().__init__()
         self.role = role
         self.artifact = artifact
+        self.workspace = workspace
+
+    def _list_files(self) -> list[Path]:
+        return sorted(
+            p for p in self.workspace.rglob("*")
+            if p.is_file() and not any(part in self.SKIP_DIRS for part in p.parts)
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(f"--- Checkpoint: {self.role} ---")
         yield Static(self.artifact[:1000], id="artifact-preview")
-        yield OptionList(
-            Option("Approve", id="approve"),
-            Option("Reject", id="reject"),
-            Option("View full", id="view"),
-        )
+        options = [Option("Approve", id="approve"), Option("Reject", id="reject")]
+        for f in self._list_files():
+            rel = str(f.relative_to(self.workspace))
+            options.append(Option(f"View: {rel}", id=f"view:{rel}"))
+        yield OptionList(*options)
         yield Footer()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        if event.option.id == "view":
-            self.query_one("#artifact-preview", Static).update(self.artifact)
+        option_id = event.option.id or ""
+        if option_id.startswith("view:"):
+            rel_path = option_id[len("view:"):]
+            try:
+                content = (self.workspace / rel_path).read_text()
+            except Exception as e:
+                content = f"Could not read {rel_path}: {e}"
+            self.query_one("#artifact-preview", Static).update(f"--- {rel_path} ---\n{content}")
             return
-        self.dismiss(event.option.id)
+        self.dismiss(option_id)
 
 
 class RunningScreen(Screen):
@@ -123,8 +138,8 @@ class PipelineApp(App):
         log_path = config.RUN_LOGS_DIR / "test_run.json"
         state = PipelineState(spec=self.spec, project_slug="test_run", workspace=str(workspace))
 
-        async def checkpoint_fn(role: str, artifact: str) -> str:
-            return await self.push_screen_wait(CheckpointScreen(role, artifact))
+        async def checkpoint_fn(role: str, artifact: str, ws: Path) -> str:
+            return await self.push_screen_wait(CheckpointScreen(role, artifact, ws))
 
         await run_pipeline(
             config.ENGINE, self.spec, workspace, log_path, state,

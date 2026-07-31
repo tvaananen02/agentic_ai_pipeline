@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp import ClientSession
+from textual import work
 import config
 from state import PipelineState
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
@@ -145,7 +146,7 @@ async def run_stage(
                 state.save(log_path)
                 return False, tool_calls
 
-            decision = await checkpoint_fn(role, result)
+            decision = await checkpoint_fn(role, result, workspace)
             approved = decision == "approve"
             state.record(role, result, approved)
             state.save(log_path)
@@ -239,7 +240,7 @@ async def run_pipeline(
         if not approved:
             log_fn(f"{engine}: AUTO-REJECTED, stopping.")
             return None
-        decision = await checkpoint_fn(engine, output)
+        decision = await checkpoint_fn(engine, output, workspace)
         if decision != "approve":
             log_fn(f"{engine}: Not approved, stopping.")
             return None
