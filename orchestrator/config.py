@@ -19,3 +19,8 @@ LLAMACPP_MODEL = os.environ.get("LLAMACPP_MODEL", "local-model")
 ENGINE = os.environ.get("ENGINE", "mcp")  # "mcp", "claude_code", or "opencode"
 KNOWN_ARTIFACT_DIRS = {".pytest_cache", "__pycache__", ".git"}
 REQUIRED_PROJECT_FILES = ["solution.py", "test_solution.py"]
+MAX_ITERATIONS_BY_ROLE = {
+    "re_engineer": 8,
+    "tester": 10,
+    "se_engineer": 20,
+}
