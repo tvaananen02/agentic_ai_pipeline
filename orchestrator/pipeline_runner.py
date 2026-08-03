@@ -79,6 +79,27 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         api_key=os.environ["GROQ_API_KEY"],
     )
 
+def _prefetch_context(role: str, workspace: Path, project_name: str | None ) -> str:
+    if role == "tester":
+        paths = ["requirements.md"]
+    elif role == "se_engineer":
+        paths = ["requirements.md", "tests.md"]
+        if project_name:
+            paths.append(f"{project_name}/test_solution.py")
+    else:
+        return ""
+    blocks = []
+    for rel_path in paths:
+        f = workspace / rel_path
+        if f.exists():
+            blocks.append(f"--- {rel_path} ---\n{f.read_text()}")
+    if not blocks:
+        return ""
+    return (
+        "The following files have already been read for you. Their full, current "
+        "content is included below. YOU MUST NOT call read_file for these paths; use this "
+        "content directly.\n\n" + "\n\n".join(blocks)
+    )
 
 def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
     return any(tc["name"] == name for tc in tool_calls)

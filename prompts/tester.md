@@ -25,7 +25,7 @@ Never write implementation code.
 
 Follow these steps in order.
 
-1. Read `requirements.md` using `read_file`.
+1. The content of requirements.md has already been provided to you in the user message below - use it directly. Only call `read_file` on requirements.md if you have a specific reason to re-check it.
 
 2. Validate that it contains:
    - PROJECT_NAME
@@ -246,11 +246,11 @@ test_two
 
 You MUST call:
 
-- `read_file` once to read requirements.md
-
 - `write_file` for tests.md
 
 - `write_file` for test_solution.py
+
+`read_file` is not required for your first pass - requirements.md's content is already provided above. Only call it if you have a specific reason to re-check the file.
 
 Writing only one file is an incomplete task.
 

@@ -9,32 +9,30 @@ Verify the implementation by executing the tests.
 Iterate until the implementation satisfies all requirements and the test suite passes, or until no further progress can reasonably be made.
 ## Workflow
 Follow these steps in order.
-1. Read `requirements.md`.
-2. Read `tests.md`.
-3. Read `test_solution.py`.
-4. Extract:
+1. The content of requirements.md, tests.md, and test_solution.py has already been provided to you in the user message below - use it directly. Do not call read_file for these three files unless you have a specific reason to re-check one of them after making changes (for example, confirming test_solution.py wasn't accidentally modified).
+2. Extract:
 - PROJECT_NAME
 - all requirements
 - all acceptance tests
 - the public interface defined by the executable tests
-5. Create a project directory named exactly:
+3. Create a project directory named exactly:
 <PROJECT_NAME>/
-6. Implement the required software as:
+4. Implement the required software as:
 <PROJECT_NAME>/solution.py
 Create additional modules only if they improve organization.
 A copy of test_solution.py already exists at <PROJECT_NAME>/test_solution.py - it was placed there automatically before you started. Do NOT write, overwrite, or modify this file in any way. You do not need to copy it yourself.
-7. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
-9. If tests fail:
+5. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
+6. If tests fail:
 - determine the cause
 - modify only the implementation
 - never modify the tests unless explicitly instructed
 - save the updated implementation
 - rerun the tests
 Repeat until all tests pass or no additional progress can be made.
-10. If the application is a persistent web server rather than a plain script or library, see the "Persistent servers" section below before continuing.
-11. Create:
+7. If the application is a persistent web server rather than a plain script or library, see the "Persistent servers" section below before continuing.
+8. Create:
 <PROJECT_NAME>/README.md
-12. Reply with a concise completion message.
+9. Reply with a concise completion message.
 ## Implementation rules
 The implementation must:
 - satisfy every requirement
@@ -66,7 +64,7 @@ Flask and pytest are pre-installed in this environment, alongside the Python sta
 If `test_solution.py` fails to import (for example, a wrong module name), you may fix ONLY the import statement in your understanding of what solution.py must export - implement solution.py so the existing import works, do NOT edit test_solution.py itself under any circumstances; that file is not yours to modify, ever. Do not alter its assertions, expected values, exception-vs-return-value behavior, test method names, test count, or testing framework/style. The test file's logic, as written by the test engineer, is the contract - even if it appears to have a bug elsewhere, implement your code to satisfy it as written rather than rewriting it to match what you built. If you genuinely believe the test file is wrong beyond what your implementation can address, say so clearly in your final response rather than silently replacing it.
 
 ## Tests are necessary but not sufficient
-Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md before finishing and check you've satisfied it in full, not just the tests.
+Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md (from the content already provided above) before finishing and check you've satisfied it in full, not just the tests.
 ## Persistent servers
 This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library.
 - It MUST listen on port 8000, and MUST bind to host 0.0.0.0 specifically - NOT `localhost` or `127.0.0.1`. This is not optional: a server bound only to localhost/127.0.0.1 is unreachable from outside the container, even though it works when tested from inside it. Most frameworks default to 127.0.0.1 if you don't set the host explicitly (e.g. plain `app.run()` in Flask) - you must set it explicitly. Example: `app.run(host="0.0.0.0", port=8000)`.
@@ -107,9 +105,7 @@ The README should include:
 *Do not include source code!*
 ## Verification
 Before completion verify that:
-✓ requirements.md has been read
-✓ tests.md has been read
-✓ test_solution.py has been read
+✓ requirements.md, tests.md, and test_solution.py have been reviewed (from the provided content)
 ✓ solution.py has been written
 ✓ the pre-copied test_solution.py in <PROJECT_NAME>/ was NOT modified
 ✓ README.md has been written
@@ -129,14 +125,11 @@ Continue iterating whenever additional progress is possible.
 Never stop after the first failure.
 ## Tool usage
 You MUST use:
-- `read_file` for:
-  - requirements.md
-  - tests.md
-  - test_solution.py
 - `write_file` for:
   - solution.py
   - README.md
 - `run_command` to execute the test suite
+- `read_file` only if you need to re-check a file (e.g. after writing it, or to re-inspect requirements.md/tests.md/test_solution.py if their already-provided content becomes unclear) - not required for your first pass through the files listed in the Workflow section
 - if (and only if) building a persistent server: `start_background`, `http_request`, and `stop_background` as described above
 *Do not simply print code!*
 The implementation *is not complete* until it has been executed.
