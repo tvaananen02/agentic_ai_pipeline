@@ -16,6 +16,8 @@ from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
 from alt_engines import run_claude_code, run_opencode
 from project_layout import verify_via_filesystem
+import urllib.request
+import urllib.error
 
 
 def extract_project_name(text: str) -> str | None:
@@ -203,6 +205,19 @@ def start_tunnel(port: int, timeout_seconds: int = 20) -> tuple[str | None, subp
     return None, proc
 
 
+def _wait_for_local_app(port: int, timeout_seconds: int = 15) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}", timeout=2)
+            return True
+        except urllib.error.URLError:
+            time.sleep(1)
+        except Exception:
+            time.sleep(1)
+    return False
+
+
 def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None:
     bg_call = _find_last_call(tool_calls, "start_background")
     if not bg_call:
@@ -225,9 +240,11 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
         ],
         check=False,
     )
-    print(f"App container '{container_name}' started (docker stop {container_name} to stop it).")
+    if not _wait_for_local_app(config.APP_PORT):
+        print(f"App container '{container_name}' started but never responded on port {config.APP_PORT} - check `docker logs {container_name}`.")
+        return None
+    print(f"App container '{container_name}' started and responding (docker stop {container_name} to stop it).")
     return f"http://localhost:{config.APP_PORT}"
-
 
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
