@@ -15,24 +15,26 @@ Follow these steps in order.
 - all requirements
 - all acceptance tests
 - the public interface defined by the executable tests
-3. Create a project directory named exactly:
+3. Determine whether requirements.md describes a web application - see "Web Application Requirement — MANDATORY" below. This is not optional and must be decided before you write any code.
+4. Create a project directory named exactly:
 <PROJECT_NAME>/
-4. Implement the required software as:
+5. Implement the required software as:
 <PROJECT_NAME>/solution.py
 Create additional modules only if they improve organization.
 A copy of test_solution.py already exists at <PROJECT_NAME>/test_solution.py - it was placed there automatically before you started. Do NOT write, overwrite, or modify this file in any way. You do not need to copy it yourself.
-5. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
-6. If tests fail:
+6. Execute the provided pytest suite from `<PROJECT_NAME>/test_solution.py`.
+Do not attempt to start the application as a server before solution.py exists and has been written — write the implementation first, then follow the Persistent servers section.
+7. If tests fail:
 - determine the cause
 - modify only the implementation
 - never modify the tests unless explicitly instructed
 - save the updated implementation
 - rerun the tests
 Repeat until all tests pass or no additional progress can be made.
-7. If the application is a persistent web server rather than a plain script or library, see the "Persistent servers" section below before continuing.
-8. Create:
+8. If requirements.md describes a web application, you MUST also complete the "Persistent servers" section below. This is a separate, mandatory requirement - passing tests alone does NOT satisfy it, and skipping it will cause the deliverable to be rejected regardless of test results.
+9. Create:
 <PROJECT_NAME>/README.md
-9. Reply with a concise completion message.
+10. Reply with a concise completion message.
 ## Implementation rules
 The implementation must:
 - satisfy every requirement
@@ -50,7 +52,12 @@ The implementation must:
 - fail predictably when appropriate
 Do not add features that are not supported by the requirements.
 ## Public API
-The public interface is defined by `test_solution.py`.
+Before writing solution.py, look at *exactly* what test_solution.py imports from solution
+(e.g. `from solution import create_app`) and *exactly* how it calls that import (e.g.
+`create_app().test_client()`). solution.py *MUST* define that exact name, callable in that
+exact way. A working Flask app that satisfies every requirement is still wrong if it does
+not expose the specific function or object name the tests import - fix the mismatch by
+adding what the test expects, never by asking yourself what seems reasonable instead.
 Do not rename:
 - functions
 - classes
@@ -63,10 +70,38 @@ Flask and pytest are pre-installed in this environment, alongside the Python sta
 ## If test_solution.py does not import correctly
 If `test_solution.py` fails to import (for example, a wrong module name), you may fix ONLY the import statement in your understanding of what solution.py must export - implement solution.py so the existing import works, do NOT edit test_solution.py itself under any circumstances; that file is not yours to modify, ever. Do not alter its assertions, expected values, exception-vs-return-value behavior, test method names, test count, or testing framework/style. The test file's logic, as written by the test engineer, is the contract - even if it appears to have a bug elsewhere, implement your code to satisfy it as written rather than rewriting it to match what you built. If you genuinely believe the test file is wrong beyond what your implementation can address, say so clearly in your final response rather than silently replacing it.
 
+## Web Application Requirement — MANDATORY, NO EXCEPTIONS
+
+If requirements.md contains any indication that the software is a web application - including
+but not limited to the words "web app", "web page", "webpage", "website", "browser", or any
+description of something a user opens, views, or interacts with through a web interface - then
+this is a web application. There is no ambiguity tolerated here. If you are unsure, treat it as
+a web application.
+
+A passing test suite is NOT sufficient proof of a web application. It is entirely possible to
+write a class that passes every test in test_solution.py and still completely fails this
+requirement, because the class never runs as a server. If test_solution.py tests a Flask app
+through a test client, your solution.py MUST actually implement and run that Flask app - not
+a plain class with equivalent methods that happens to satisfy the same assertions.
+
+For a web application you MUST:
+- Implement it as a real Flask application in solution.py, with an `if __name__ == "__main__":`
+  block that calls `app.run(host="0.0.0.0", port=8000)`.
+- Complete every step in the "Persistent servers" section below: start it with
+  `start_background`, confirm it responds via `http_request`, then stop it.
+- Do this regardless of whether test_solution.py's tests already pass. Tests passing is a
+  necessary condition, never a sufficient one, for a web application requirement.
+
+Skipping `start_background` for a web application requirement, or implementing only a plain
+class/function that satisfies the tests without ever being runnable as a server, is a complete
+failure of the task - equivalent to never implementing the software at all, even if every test
+passes. There are no partial credit or edge cases here: if requirements.md says web app, there
+must be a real running server, full stop.
+
 ## Tests are necessary but not sufficient
 Passing the test suite proves your core logic is correct - it does not by itself prove the deliverable satisfies the full original requirements. If requirements.md or the original spec describes something usable (a command line tool, a script someone runs, an interactive program), solution.py MUST include a real, runnable entry point (e.g. an `if __name__ == "__main__":` block that reads input and prints a result) that makes it actually usable that way, even if test_solution.py only tests an underlying pure function and never directly exercises that entry point. Re-read requirements.md (from the content already provided above) before finishing and check you've satisfied it in full, not just the tests.
 ## Persistent servers
-This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library.
+This section applies ONLY if the application is a persistent web server (something that listens for requests and does not exit on its own), not a plain script or library. If requirements.md describes a web application, this section is MANDATORY - see "Web Application Requirement" above.
 - It MUST listen on port 8000, and MUST bind to host 0.0.0.0 specifically - NOT `localhost` or `127.0.0.1`. This is not optional: a server bound only to localhost/127.0.0.1 is unreachable from outside the container, even though it works when tested from inside it. Most frameworks default to 127.0.0.1 if you don't set the host explicitly (e.g. plain `app.run()` in Flask) - you must set it explicitly. Example: `app.run(host="0.0.0.0", port=8000)`.
 - Start it by running the script directly, e.g. `python <PROJECT_NAME>/solution.py`, via `start_background`.
   Never launch it with a framework CLI command (e.g. `flask run`, `gunicorn`, `uvicorn`) - these
@@ -111,9 +146,11 @@ Before completion verify that:
 ✓ README.md has been written
 ✓ the implementation matches the required interface
 ✓ the implementation has been tested
-✓ if a persistent server: it binds to 0.0.0.0 (not localhost/127.0.0.1), was started using
+✓ IF requirements.md describes a web application: solution.py implements a real Flask app,
+  it binds to 0.0.0.0 (not localhost/127.0.0.1), was started via start_background using
   `python <PROJECT_NAME>/solution.py` (never a framework CLI command), the exact returned
-  process_id was used throughout, verified via http_request, and stopped
+  process_id was used throughout, verified via http_request, and stopped. A passing test
+  suite alone does NOT satisfy this checkbox - the server must have actually run.
 ## Failure recovery
 If execution fails:
 - inspect the failure

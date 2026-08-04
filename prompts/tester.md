@@ -40,17 +40,43 @@ Follow these steps in order.
    - PROJECT_NAME
    - every REQ
 
-5. Design a complete acceptance test plan.
+5. Determine whether this is a web application (see "Web Application Detection" below) before designing the test plan. This decision changes what a correct test suite looks like and cannot be revised later.
 
-6. Implement the executable pytest suite.
+6. Design a complete acceptance test plan.
 
-7. Save:
+7. Implement the executable pytest suite.
+
+8. Save:
 
    - tests.md
    - test_solution.py
 
-8. Reply with one short confirmation.
+9. Reply with one short confirmation.
 
+
+## Web Application Detection — MANDATORY, NO EXCEPTIONS
+
+If requirements.md contains any indication that the software is a web application - including
+but not limited to the words "web app", "web page", "webpage", "website", "browser", or any
+description of something a user opens, views, or interacts with through a web interface - then
+this is a web application. There is no ambiguity tolerated here. If you are unsure, treat it as
+a web application.
+
+For a web application, you MUST:
+- Test it as a real, running Flask server, using Flask's test client to exercise actual routes
+  and HTTP responses (e.g. `app.test_client().get("/")`).
+- NEVER write tests against plain importable functions or classes (e.g. `from solution import
+  Counter`, `counter.increment()`) for a web application requirement. This is a hard failure,
+  not a style preference. A class with methods is not a web app, no matter how well-tested.
+
+Testing a web application as if it were a plain script is an incorrect test suite. It WILL
+cause the final implementation to fail deployment even if every test you write passes, because
+nothing about a passing test on a bare class or function proves a server exists or runs. Do not
+let "the tests pass" convince you the suite is correct - a passing test suite that tests the
+wrong thing is worse than an obviously-incomplete one, because it hides the failure until later.
+
+If requirements.md does NOT describe a web application, use the "Interface Style" guidance
+below instead.
 
 ## Requirements Traceability
 
@@ -109,11 +135,15 @@ Generate `test_solution.py`.
 
 Write REAL pytest code.
 
-Always import the code under test with exactly this line:
+If this is NOT a web application, always import the code under test with exactly this line:
 
 from solution import <names>
 
 The module is always named `solution`, regardless of what you named the project. Never substitute the project name, folder name, or any other name here - the implementation file is always solution.py, so the import is always `from solution import ...`.
+
+If this IS a web application, import the Flask app factory or app object from `solution` (e.g.
+`from solution import create_app` or `from solution import app`) and drive every test through
+Flask's test client against real routes - never through direct method calls on a plain class.
 
 The tests should execute successfully once a correct implementation exists.
 
@@ -147,6 +177,9 @@ Only expose interfaces that are required by the requirements.
 
 ## Interface Style
 
+This section applies only when requirements.md does NOT describe a web application - see "Web
+Application Detection" above, which takes precedence over everything in this section.
+
 Prefer testing pure functions with clear inputs and outputs.
 
 Avoid testing via:
@@ -160,8 +193,6 @@ Avoid testing via:
 Only test interactive behavior if the requirements explicitly require an interactive interface.
 
 If the requirements describe a command line tool, prefer a testable core function (for example, is_prime(n)) with a thin CLI wrapper around it, rather than making the core logic reachable only through console input and output.
-
-If the requirements describe a web application, prefer testing the Flask app's routes and behavior directly (for example, using Flask's test client) rather than assuming plain importable functions that a web server implementation would not naturally expose.
 
 ## Pytest Standards
 
@@ -208,7 +239,8 @@ Never test:
 - helper functions
 - private methods
 
-Only test externally observable behavior.
+Only test externally observable behavior. For a web application, "externally observable" means
+HTTP requests and responses through the test client - not internal Python objects.
 
 
 ## Code Quality
