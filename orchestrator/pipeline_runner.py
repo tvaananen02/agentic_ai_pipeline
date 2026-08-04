@@ -2,13 +2,15 @@ import asyncio
 import re
 import sys
 import os
+import shutil
 import subprocess
 import threading
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp import ClientSession
-from textual import work
 import config
 from state import PipelineState
 sys.path.insert(0, str(Path(__file__).parent.parent / "llm_client"))
@@ -16,8 +18,6 @@ from agent_provider import OpenAICompatibleProvider
 from tool_loop import run_tool_loop
 from alt_engines import run_claude_code, run_opencode
 from project_layout import verify_via_filesystem
-import urllib.request
-import urllib.error
 
 
 def extract_project_name(text: str) -> str | None:
@@ -53,6 +53,30 @@ def load_prompt(role: str) -> str:
     return prompt_path.read_text() if prompt_path.exists() else ""
 
 
+def _prefetch_context(role: str, workspace: Path, project_name: str | None) -> str:
+    if role == "tester":
+        paths = ["requirements.md"]
+    elif role == "se_engineer":
+        paths = ["requirements.md", "tests.md"]
+        if project_name:
+            paths.append(f"{project_name}/test_solution.py")
+    else:
+        return ""
+
+    blocks = []
+    for rel_path in paths:
+        f = workspace / rel_path
+        if f.exists():
+            blocks.append(f"--- {rel_path} ---\n{f.read_text()}")
+    if not blocks:
+        return ""
+    return (
+        "The following files have already been read for you - their full, current "
+        "content is included below. Do not call read_file for these paths; use this "
+        "content directly.\n\n" + "\n\n".join(blocks)
+    )
+
+
 def build_docker_params(role: str, workspace: Path) -> StdioServerParameters:
     return StdioServerParameters(
         command="docker",
@@ -81,27 +105,6 @@ def build_provider(role: str) -> OpenAICompatibleProvider:
         api_key=os.environ["GROQ_API_KEY"],
     )
 
-def _prefetch_context(role: str, workspace: Path, project_name: str | None ) -> str:
-    if role == "tester":
-        paths = ["requirements.md"]
-    elif role == "se_engineer":
-        paths = ["requirements.md", "tests.md"]
-        if project_name:
-            paths.append(f"{project_name}/test_solution.py")
-    else:
-        return ""
-    blocks = []
-    for rel_path in paths:
-        f = workspace / rel_path
-        if f.exists():
-            blocks.append(f"--- {rel_path} ---\n{f.read_text()}")
-    if not blocks:
-        return ""
-    return (
-        "The following files have already been read for you. Their full, current "
-        "content is included below. YOU MUST NOT call read_file for these paths; use this "
-        "content directly.\n\n" + "\n\n".join(blocks)
-    )
 
 def _tool_was_called(tool_calls: list[dict], name: str) -> bool:
     return any(tc["name"] == name for tc in tool_calls)
@@ -141,6 +144,12 @@ def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
     return matches[-1] if matches else None
 
 
+def _clear_workspace(workspace: Path) -> None:
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    workspace.mkdir(parents=True, exist_ok=True)
+
+
 async def run_stage(
     role: str,
     workspace: Path,
@@ -154,8 +163,10 @@ async def run_stage(
     """Returns (approved: bool, tool_calls: list[dict])."""
     params = build_docker_params(role, workspace)
     provider = build_provider(role)
+
     prefetched = _prefetch_context(role, workspace, project_name)
     augmented_input = f"{user_input}\n\n{prefetched}" if prefetched else user_input
+
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -164,7 +175,7 @@ async def run_stage(
                 provider, session, load_prompt(role), augmented_input,
                 max_iterations=config.MAX_ITERATIONS_BY_ROLE.get(role, 10),
                 log_fn=log_fn,
-            )            
+            )
             log_fn(f"{role}: Result: {result}")
             rejection_reason = _validate_stage(role, tool_calls, workspace, project_name)
             if rejection_reason:
@@ -211,8 +222,6 @@ def _wait_for_local_app(port: int, timeout_seconds: int = 15) -> bool:
         try:
             urllib.request.urlopen(f"http://localhost:{port}", timeout=2)
             return True
-        except urllib.error.URLError:
-            time.sleep(1)
         except Exception:
             time.sleep(1)
     return False
@@ -245,6 +254,7 @@ def launch_persistent_app(tool_calls: list[dict], workspace: Path) -> str | None
         return None
     print(f"App container '{container_name}' started and responding (docker stop {container_name} to stop it).")
     return f"http://localhost:{config.APP_PORT}"
+
 
 def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     prompt = load_prompt("full_task") + "\n\n---\n\nSpec:\n" + spec
@@ -281,10 +291,12 @@ async def run_pipeline(
         state.save(log_path)
         if not approved:
             log_fn(f"{engine}: AUTO-REJECTED, stopping.")
+            _clear_workspace(workspace)
             return None
         decision = await checkpoint_fn(engine, output, workspace)
         if decision != "approve":
             log_fn(f"{engine}: Not approved, stopping.")
+            _clear_workspace(workspace)
             return None
         log_fn(f"Done. Files in {workspace}")
         return None
@@ -301,6 +313,7 @@ async def run_pipeline(
             last_tool_calls = tool_calls
         if not approved:
             log_fn(f"{role}: Not approved, stopping pipeline.")
+            _clear_workspace(workspace)
             return None
         if role == "tester":
             project_name = prepare_project_dir(workspace)

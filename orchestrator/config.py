@@ -24,3 +24,4 @@ MAX_ITERATIONS_BY_ROLE = {
     "tester": 10,
     "se_engineer": 20,
 }
+CRASH_LOGS_DIR = PROJECT_ROOT / "results" / "crash_logs"

@@ -9,6 +9,8 @@ from textual.widgets.option_list import Option
 from textual.screen import Screen
 import sys
 import os
+import time
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "orchestrator"))
@@ -106,7 +108,7 @@ class CheckpointScreen(Screen[str]):
     def _list_files(self) -> list[Path]:
         return sorted(
             p for p in self.workspace.rglob("*")
-        if p.is_file() and not any(part in config.KNOWN_ARTIFACT_DIRS for part in p.parts)
+            if p.is_file() and not any(part in config.KNOWN_ARTIFACT_DIRS for part in p.parts)
         )
 
     def compose(self) -> ComposeResult:
@@ -174,25 +176,30 @@ class PipelineApp(App):
         self.pipeline_worker = self.run_worker(self._run_pipeline())
 
     async def _run_pipeline(self) -> None:
-        running = RunningScreen()
-        await self.push_screen(running)
-
-        workspace = config.DEMO_PROJECT_DIR / "test_run"
-        os.makedirs(workspace, exist_ok=True)
         os.makedirs(config.RUN_LOGS_DIR, exist_ok=True)
-        log_path = config.RUN_LOGS_DIR / "test_run.json"
-        state = PipelineState(
-            spec=self.spec, project_slug="test_run", workspace=str(workspace),
-            engine=self.engine, model=self.model_label,
-        )
+        try:
+            running = RunningScreen()
+            await self.push_screen(running)
 
-        async def checkpoint_fn(role: str, artifact: str, ws: Path) -> str:
-            return await self.push_screen_wait(CheckpointScreen(role, artifact, ws))
+            workspace = config.DEMO_PROJECT_DIR / "test_run"
+            os.makedirs(workspace, exist_ok=True)
+            log_path = config.RUN_LOGS_DIR / "test_run.json"
+            state = PipelineState(
+                spec=self.spec, project_slug="test_run", workspace=str(workspace),
+                engine=self.engine, model=self.model_label,
+            )
 
-        await run_pipeline(
-            config.ENGINE, self.spec, workspace, log_path, state,
-            checkpoint_fn=checkpoint_fn, log_fn=running.log_line, role_fn=running.set_role,
-        )
+            async def checkpoint_fn(role: str, artifact: str, ws: Path) -> str:
+                return await self.push_screen_wait(CheckpointScreen(role, artifact, ws))
+
+            await run_pipeline(
+                config.ENGINE, self.spec, workspace, log_path, state,
+                checkpoint_fn=checkpoint_fn, log_fn=running.log_line, role_fn=running.set_role,
+            )
+        except Exception:
+            crash_log = config.RUN_LOGS_DIR / f"crash_{int(time.time())}.log"
+            crash_log.write_text(traceback.format_exc())
+            self.exit(message=f"Pipeline crashed - stack trace saved to {crash_log}")
 
 
 if __name__ == "__main__":
