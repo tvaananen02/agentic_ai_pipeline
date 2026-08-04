@@ -152,13 +152,14 @@ async def run_stage(
     """Returns (approved: bool, tool_calls: list[dict])."""
     params = build_docker_params(role, workspace)
     provider = build_provider(role)
-
+    prefetched = _prefetch_context(role, workspace, project_name)
+    augmented_input = f"{user_input}\n\n{prefetched}" if prefetched else user_input
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             log_fn(f"{role}: Connected, starting...")
             result, tool_calls = await run_tool_loop(
-                provider, session, load_prompt(role), user_input,
+                provider, session, load_prompt(role), augmented_input,
                 max_iterations=config.MAX_ITERATIONS_BY_ROLE.get(role, 10),
                 log_fn=log_fn,
             )            
