@@ -14,6 +14,9 @@ MAX_TOOL_RESULT_CHARS = 1500
 # Everything else reads live state and must never be cached.
 _CACHEABLE_TOOLS = {"write_file"}
 
+_PYTEST_SUMMARY_PATTERN = re.compile(r"^(=+ .*(passed|failed|error).* =+)$", re.MULTILINE)
+_PYTEST_FAILURE_LINE = re.compile(r"^(FAILED|ERROR) (\S+)", re.MULTILINE)
+
 
 def _extract_pseudo_tool_calls(text: str) -> list[dict]:
     calls = []
@@ -26,10 +29,24 @@ def _extract_pseudo_tool_calls(text: str) -> list[dict]:
     return calls
 
 
-def _truncate_for_history(result_text: str) -> str:
+def _truncate_for_history(result_text: str, keep_end: bool = False) -> str:
     if len(result_text) <= MAX_TOOL_RESULT_CHARS:
         return result_text
+    if keep_end:
+        return f"... [truncated - {len(result_text)} chars total]\n" + result_text[-MAX_TOOL_RESULT_CHARS:]
     return result_text[:MAX_TOOL_RESULT_CHARS] + f"\n... [truncated - {len(result_text)} chars total]"
+
+
+def _compact_pytest_output(raw: str) -> str:
+    """Collapses a full pytest run into one line: counts + failing test
+    names. Never blindly truncates - always keeps the actual verdict."""
+    summary_match = _PYTEST_SUMMARY_PATTERN.search(raw)
+    summary = summary_match.group(1).strip("= ") if summary_match else "no summary line found"
+    failures = _PYTEST_FAILURE_LINE.findall(raw)
+    if failures:
+        names = ", ".join(f"{kind}: {name}" for kind, name in failures)
+        return f"pytest result: {summary}. Failing: {names}"
+    return f"pytest result: {summary}"
 
 
 async def _execute_tool_call(session, name: str, arguments: dict, call_cache: dict, log_fn) -> str:
@@ -44,6 +61,18 @@ async def _execute_tool_call(session, name: str, arguments: dict, call_cache: di
         call_cache[cache_key] = result_text
     return result_text
 
+
+async def _maybe_auto_test(session, tc_name: str, tc_arguments: dict, call_cache: dict, log_fn) -> str | None:
+    path = tc_arguments.get("path", "")
+    if tc_name != "write_file" or not path.endswith("solution.py") or path.endswith("test_solution.py"):
+        return None
+    test_path = path[: -len("solution.py")] + "test_solution.py"
+    command = f"pytest {test_path}"
+    raw_result = await _execute_tool_call(session, "run_command", {"command": command, "timeout_seconds": 60}, call_cache, log_fn)
+    log_fn(f"  auto-test raw: {raw_result[:400]}")
+    summary = _compact_pytest_output(raw_result)
+    log_fn(f"  auto-test: {summary}")
+    return summary
 
 async def run_tool_loop(
     provider: LLMProvider,
@@ -78,10 +107,13 @@ async def run_tool_loop(
             for call in recovered:
                 result_text = await _execute_tool_call(session, call["name"], call["arguments"], call_cache, log_fn)
                 log_fn(f"  result: {result_text[:200]}")
+                auto_test = await _maybe_auto_test(session, call["name"], call["arguments"], call_cache, log_fn)
+                if auto_test:
+                    result_text = f"{result_text}. {auto_test}"
                 tools_called.append({"name": call["name"], "arguments": call["arguments"], "result": result_text})
                 messages.append({
                     "role": "user",
-                    "content": f"Result of {call['name']}: {_truncate_for_history(result_text)}",
+                    "content": f"Result of {call['name']}: {_truncate_for_history(result_text, keep_end=(call['name'] == 'run_command'))}",
                 })
             continue
 
@@ -89,8 +121,11 @@ async def run_tool_loop(
         for tc in response.tool_calls:
             result_text = await _execute_tool_call(session, tc.name, tc.arguments, call_cache, log_fn)
             log_fn(f"  result: {result_text[:200]}")
+            auto_test = await _maybe_auto_test(session, tc.name, tc.arguments, call_cache, log_fn)
+            if auto_test:
+                result_text = f"{result_text}. {auto_test}"
             tools_called.append({"name": tc.name, "arguments": tc.arguments, "result": result_text})
-            messages.append(provider.format_tool_result_message(tc.id, _truncate_for_history(result_text)))
+            messages.append(provider.format_tool_result_message(tc.id, _truncate_for_history(result_text, keep_end=(tc.name == "run_command"))))
 
     log_fn(f"  Hit max_iterations ({max_iterations}) without a final answer")
     return f"ERROR: hit max_iterations ({max_iterations}) without a final answer", tools_called

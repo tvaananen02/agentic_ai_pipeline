@@ -6,9 +6,9 @@ as they do in the TUI, since those come from _validate_stage, not from
 this script.
 
 Usage:
-    python headless_run.py "a web app with a counter" --engine mcp --model llama-3.3-70b-versatile
-    python headless_run.py "a web app with a counter" --engine claude_code
-    python headless_run.py "a web app with a counter" --model gpt-oss-120b --runs 5
+    python3 headless_run_script.py "a web app with a counter" --engine mcp --model llama-3.3-70b-versatile
+    python3 headless_run_script.py "a web app with a counter" --engine claude_code
+    python3 headless_run_script.py "a web app with a counter" --model gpt-oss-120b
 """
 from __future__ import annotations
 import argparse

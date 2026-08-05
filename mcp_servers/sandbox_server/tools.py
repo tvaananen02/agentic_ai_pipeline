@@ -1,13 +1,11 @@
 """
 Maps agent roles to the set of tool names they are allowed to call.
 """
-
 from __future__ import annotations
 
 TOOL_SETS: dict[str, set[str]] = {
     "re_engineer": {"read_file", "write_file", "list_dir"},
-    "tester": {"read_file", "write_file", "list_dir"},
-    "se_engineer": {
+    "dev": {
         "read_file",
         "write_file",
         "list_dir",

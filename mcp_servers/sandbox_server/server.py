@@ -1,11 +1,12 @@
 """
-sandbox_server - one shared MCP server inside the Docker sandbox
+sandbox_server - one shared MCP server inside the Docker sandbox, reused
+for the whole pipeline via set_role instead of restarting per stage.
 
 Startup (stdio transport, default):
-    AGENT_ROLE=se_engineer python server.py
+    AGENT_ROLE=re_engineer python server.py
 
 Testing with MCP Inspector:
-    AGENT_ROLE=se_engineer npx @modelcontextprotocol/inspector python server.py
+    AGENT_ROLE=re_engineer npx @modelcontextprotocol/inspector python server.py
 """
 from __future__ import annotations
 import functools
@@ -34,6 +35,8 @@ def _reader_thread(proc, output_buffer):
 async def filtered_list_tools():
     all_tools = await mcp.list_tools()
     allowed = TOOL_SETS.get(AGENT_ROLE, set())
+    # set_role is deliberately excluded - only the orchestrator calls it
+    # directly, the LLM must never see it as an available tool.
     return [t for t in all_tools if t.name in allowed]
 
 def require_role(func: Callable) -> Callable:
@@ -49,6 +52,17 @@ def require_role(func: Callable) -> Callable:
             )
         return func(*args, **kwargs)
     return wrapper
+
+# Orchestrator-only. Not gated by require_role, not listed in
+# filtered_list_tools. Lets one container/session serve the whole
+# pipeline by switching roles instead of restarting Docker per stage.
+@mcp.tool()
+def set_role(role: str) -> str:
+    global AGENT_ROLE
+    if role not in TOOL_SETS:
+        return f"ERROR: unknown role '{role}'"
+    AGENT_ROLE = role
+    return f"Role switched to {role}"
 
 @mcp.tool()
 @require_role
@@ -74,7 +88,6 @@ def write_file(path: str, content: str) -> str:
         target = safe_path(path)
     except ValidationError as e:
         return f"ERROR: {e}"
-    # check against a failure mode where the model sometimes double escapes newlines when generating a write_file tool call's JSON-argumentss    
     if "\\n" in content and "\n" not in content:
         content = content.replace("\\n", "\n").replace("\\t", "\t")
     try:
@@ -231,7 +244,7 @@ def start_background(command: str) -> str:
     thread.start()
     _background_processes[process_id] = {"proc": proc, "output": output_buffer}
     return f"Started background process, process_id={process_id}"
- 
+
 @mcp.tool()
 @require_role
 def get_background_output(process_id: str) -> str:
@@ -259,7 +272,7 @@ if __name__ == "__main__":
     if not AGENT_ROLE:
         print(
             "WARNING: AGENT_ROLE is not set. All tool calls will be "
-            "rejected. Launch with e.g. AGENT_ROLE=se_engineer python server.py",
+            "rejected. Launch with e.g. AGENT_ROLE=re_engineer python server.py",
             file=sys.stderr,
         )
     mcp.run()

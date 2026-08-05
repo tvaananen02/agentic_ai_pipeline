@@ -1,14 +1,9 @@
 from pathlib import Path
 import os
 PROJECT_ROOT = Path(__file__).parent.parent
-PIPELINE_ORDER = ["re_engineer", "tester", "se_engineer"]
+PIPELINE_ORDER = ["re_engineer", "dev"]
 DOCKER_IMAGE = "sandbox-server"
 DEMO_PROJECT_DIR = PROJECT_ROOT / "demo_projects"
-REQUIRED_TOOL = {
-    "re_engineer": "write_file",
-    "tester": "write_file",
-    "se_engineer": "write_file",
-}
 RUN_LOGS_DIR = PROJECT_ROOT / "results" / "run_logs"
 PROMPT_DIR = PROJECT_ROOT / "prompts"
 USED_MODEL = os.environ.get("USED_MODEL", "llama-3.3-70b-versatile")
@@ -21,7 +16,5 @@ KNOWN_ARTIFACT_DIRS = {".pytest_cache", "__pycache__", ".git"}
 REQUIRED_PROJECT_FILES = ["solution.py", "test_solution.py"]
 MAX_ITERATIONS_BY_ROLE = {
     "re_engineer": 8,
-    "tester": 10,
-    "se_engineer": 20,
+    "dev": 30,
 }
-CRASH_LOGS_DIR = PROJECT_ROOT / "results" / "crash_logs"
