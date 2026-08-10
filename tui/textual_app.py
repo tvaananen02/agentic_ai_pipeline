@@ -197,7 +197,7 @@ class PipelineApp(App):
                 checkpoint_fn=checkpoint_fn, log_fn=running.log_line, role_fn=running.set_role,
             )
         except Exception:
-            crash_log = config.RUN_LOGS_DIR / f"crash_{int(time.time())}.log"
+            crash_log = config.CRASH_LOGS_DIR / f"crash_{int(time.time())}.log"
             crash_log.write_text(traceback.format_exc())
             self.exit(message=f"Pipeline crashed - stack trace saved to {crash_log}")
 

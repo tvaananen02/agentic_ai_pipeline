@@ -6,7 +6,7 @@ DOCKER_IMAGE = "sandbox-server"
 DEMO_PROJECT_DIR = PROJECT_ROOT / "demo_projects"
 RUN_LOGS_DIR = PROJECT_ROOT / "results" / "run_logs"
 PROMPT_DIR = PROJECT_ROOT / "prompts"
-USED_MODEL = os.environ.get("USED_MODEL", "llama-3.3-70b-versatile")
+USED_MODEL = os.environ.get("USED_MODEL", "openai/gpt-oss-120b")
 APP_PORT = 8000
 MODEL_PROFILE = os.environ.get("MODEL_PROFILE", "groq")  # "groq" or "llamacpp"
 LLAMACPP_BASE_URL = os.environ.get("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
@@ -18,3 +18,4 @@ MAX_ITERATIONS_BY_ROLE = {
     "re_engineer": 8,
     "dev": 30,
 }
+CRASH_LOGS_DIR = PROJECT_ROOT / "results" / "crash_logs"
