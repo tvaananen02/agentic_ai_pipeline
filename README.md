@@ -1,33 +1,32 @@
 # Agentic Infra PoC
 
-A research prototype exploring how far agentic AI can automate software development: give a
+A prototype exploring how far agentic AI can automate software development: give a
 plain-language spec (e.g. *"build a web app with a counter"*), and a pipeline of AI agents
 handles requirements, tests, implementation, and verification, with a human checkpoint at each
-stage. The final result is launched as a real, running app on `localhost`.
+stage. The final result launched is a app, running on `localhost`.
 
-## What this does
+## What the prototype does?
 
 1. You type a spec into the terminal UI.
-2. **re_engineer** turns it into numbered requirements.
-3. **dev** writes real, executable tests (TDD) against those requirements, then implements the
-   solution, running the tests itself inside the sandbox until they genuinely pass. If the spec
+2. A requirements engineer agent turns it into numbered requirements.
+3. A dev agent writes, executable tests against those requirements, then implements the
+   solution, running the tests itself inside the sandbox until they pass. If the spec
    describes a web application, it also starts it as a real server and confirms it responds
    before finishing.
-4. The orchestrator independently re-checks the real test output captured from inside the
-   sandbox before ever showing anything to you - it never trusts the agent's own summary.
+4. The orchestrator(plain python code and logic) independently re-checks the real test output captured from inside the
+   sandbox before ever showing anything to you.
 5. You approve, reject, or inspect any file's real contents at each checkpoint before the
    pipeline continues.
 6. If the result is a runnable app, it's launched in a persistent container so you can open it
    at `http://localhost:8000`.
 
-Both agent roles share a single Docker sandbox for the whole run (the orchestrator switches
-roles mid-session rather than restarting a container per stage), with role-restricted tool
-access - each role can only do what its specific job requires. Nothing runs on your host
+Both agent roles share a single Docker sandbox for the whole run, with role-restricted tool
+access. Each role can only do what its specific job requires. Nothing runs on your host
 machine except the orchestrator itself; the host never needs any of the generated project's own
 dependencies (e.g. Flask) installed.
 
 ## Setup
-
+In the project root directory, run:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -77,7 +76,7 @@ Instead of the staged MCP pipeline above, hand the whole spec-to-code task to a 
 coding harness in one shot, connected through the same sandbox:
 
 ```bash
-ENGINE=claude_code python3 textual_app.py   # requires `claude login` already run once on this machine
+ENGINE=claude_code python3 textual_app.py   # Requires that `claude login` was already run once on this machine
 ENGINE=opencode python3 textual_app.py
 ```
 
@@ -94,10 +93,10 @@ python3 headless_run_script.py "a web app with a counter" --model openai/gpt-oss
 ## Project structure
 
 ```
-orchestrator/              the control layer - runs everything, holds no LLM logic itself
+orchestrator/              the control layer, runs everything, holds no LLM logic itself
   pipeline_runner.py         stage sequencing, checkpoints, single shared Docker session,
                               deterministic verification against real in-sandbox test output
-  config.py                  pipeline order, docker image name, paths, per-role iteration
+  config.py                  pipeline order, paths, per-role iteration
                               budgets, model defaults
   state.py                   per-run JSON logging to results/run_logs/
   project_layout.py          deterministic project-directory reconciliation (used by the
@@ -105,7 +104,7 @@ orchestrator/              the control layer - runs everything, holds no LLM log
   alt_engines.py              Claude Code / opencode integration (comparison arm)
   headless_run_script.py      CLI runner for fast, unattended repeat testing
 
-mcp_servers/sandbox_server/   the MCP server - runs INSIDE the shared Docker container
+mcp_servers/sandbox_server/   the MCP server, runs inside the shared Docker container
   server.py                    all tools: file I/O, run_command, git, http_request, background
                                 processes, plus set_role (orchestrator-only, switches which
                                 role's tool set is active without restarting the container)
@@ -119,7 +118,7 @@ llm_client/                 talks to whichever LLM is configured
                                 back, with recovery for malformed tool calls and safe history
                                 truncation
 
-tui/textual_app.py          terminal UI - the actual entry point (engine/model selection,
+tui/textual_app.py          terminal UI, the actual entry point (engine/model selection,
                              live tool-call stream, checkpoints with real file previews)
 
 prompts/                    one .md file per agent role
@@ -128,18 +127,16 @@ prompts/                    one .md file per agent role
   full_task.md                 combined prompt for Claude Code / opencode
 
 sandbox/Dockerfile          the sandbox image definition
-demo_projects/               where a run's generated project lands (cleared before each run,
-                              and on rejection)
+demo_projects/               where a run's generated project lands
 results/run_logs/            JSON log per run: what each stage produced, approved or not
 results/crash_logs/          full stack trace if the pipeline crashes unexpectedly
-evaluation/                  metrics.py, smoke_test.py - benchmarking, in progress
+evaluation/                  metrics.py, smoke_test.py, benchmarking, in progress
 ```
 
 ## Notes
 
-- The pipeline currently deploys to `localhost` only - no public tunnel is opened.
-- All verification (does the test suite actually pass) happens from real output captured
-  inside the sandbox container, never by re-running anything on the host. The host only ever
+- The pipeline currently deploys to `localhost` only.
+- All verification happens from real output captured inside the sandbox container, never by re-running anything on the host. The host only ever
   needs Python and Docker, regardless of what a given spec's generated app depends on.
 - `tester.md` / `se_engineer.md` reflect an earlier three-stage pipeline
   (`re_engineer -> tester -> se_engineer`, one container per stage) that was simplified into
