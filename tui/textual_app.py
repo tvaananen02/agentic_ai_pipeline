@@ -22,7 +22,7 @@ from state import PipelineState
 class StartScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("Hello, let's build something...", id="banner")
+        yield Static("Hello human, let's build something...", id="banner")
         yield OptionList(
             Option("Start building", id="start"),
             Option("Quit", id="quit"),
@@ -40,7 +40,7 @@ class SpecScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static("What should we build?")
-        yield Input(placeholder="Write your spec here...")
+        yield Input(placeholder="a command line tool that checks if a number is prime")
         yield Footer()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -56,7 +56,7 @@ class EngineScreen(Screen):
         yield Header()
         yield Static("Which engine should build this?")
         yield OptionList(
-            Option("MCP pipeline (re_engineer -> dev_agent)", id="mcp"),
+            Option("MCP pipeline (re_engineer -> dev)", id="mcp"),
             Option("Claude Code (via sandbox MCP)", id="claude_code"),
             Option("opencode (via sandbox MCP)", id="opencode"),
         )
@@ -79,7 +79,7 @@ class ModelScreen(Screen):
         yield Header()
         yield Static("Which model should power the MCP pipeline?")
         yield OptionList(
-            Option("Groq: qwen/qwen3.6-27b", id="groq:qwen/qwen3.6-27b"),            
+            Option("Groq: qwen/qwen3.6-27b", id="groq:qwen/qwen3.6-27b"),
             Option("Groq: gpt-oss-120b", id="groq:openai/gpt-oss-120b"),
         )
         yield Footer()
@@ -136,18 +136,43 @@ class CheckpointScreen(Screen[str]):
 
 
 class RunningScreen(Screen):
-    """Live tool-call stream while a stage is executing."""
+    """Live tool-call stream while a stage is executing, plus a
+    continuously-updating status line so it's always clear whether the
+    pipeline is working or has actually stalled/crashed."""
+
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def __init__(self):
+        super().__init__()
+        self._status_text = "Starting..."
+        self._spinner_index = 0
+        self._stage_started_at = time.monotonic()
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static("Working...", id="role-status")
+        yield Static("", id="status-line")
         yield RichLog(id="stream", wrap=True)
         yield Footer()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.1, self._tick)
+
+    def _tick(self) -> None:
+        elapsed = time.monotonic() - self._stage_started_at
+        frame = self.SPINNER_FRAMES[self._spinner_index % len(self.SPINNER_FRAMES)]
+        self._spinner_index += 1
+        self.query_one("#status-line", Static).update(f"{frame} {self._status_text}  ({elapsed:.0f}s)")
 
     def log_line(self, message: str) -> None:
         self.query_one("#stream", RichLog).write(message)
 
+    def set_status(self, text: str) -> None:
+        self._status_text = text
+
     def set_role(self, role: str) -> None:
+        self._stage_started_at = time.monotonic()
+        self._status_text = "Starting..."
         self.query_one("#role-status", Static).update(f"Agent: {role}")
 
 
@@ -194,7 +219,8 @@ class PipelineApp(App):
 
             await run_pipeline(
                 config.ENGINE, self.spec, workspace, log_path, state,
-                checkpoint_fn=checkpoint_fn, log_fn=running.log_line, role_fn=running.set_role,
+                checkpoint_fn=checkpoint_fn, log_fn=running.log_line,
+                role_fn=running.set_role, status_fn=running.set_status,
             )
         except Exception:
             crash_log = config.CRASH_LOGS_DIR / f"crash_{int(time.time())}.log"

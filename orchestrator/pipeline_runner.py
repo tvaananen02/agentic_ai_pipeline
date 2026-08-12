@@ -18,12 +18,9 @@ from alt_engines import run_claude_code, run_opencode
 from project_layout import verify_via_filesystem
 
 def extract_project_name(text: str) -> str | None:
-    # Primary: a PROJECT_NAME/PROJECT-NAME line, any case, optional leading '#'
     match = re.search(r"^#?\s*PROJECT[_-]NAME:?\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
     if match:
         return match.group(1).strip().rstrip(":").strip()
-    # Fallback: agents sometimes write a bare markdown header instead
-    # (e.g. "# quote-finder:") with no PROJECT_NAME phrase at all.
     first_line = next((l for l in text.splitlines() if l.strip()), "")
     header_match = re.match(r"^#\s*([a-zA-Z0-9\-_]+)\s*:?\s*$", first_line.strip())
     return header_match.group(1).strip() if header_match else None
@@ -97,15 +94,18 @@ def _last_test_result(tool_calls: list[dict]) -> tuple[bool, str] | None:
     return None
 
 def _validate_stage(role: str, tool_calls: list[dict], workspace: Path, project_name: str | None = None) -> str | None:
+    """Returns None if OK, or a rejection reason string."""
     write_calls = [tc for tc in tool_calls if tc["name"] == "write_file"]
     if role == "re_engineer" and not write_calls:
         return "never called write_file"
+
     if role == "dev":
         paths = {c["arguments"].get("path", "") for c in write_calls}
         if not any(p.endswith("test_solution.py") for p in paths):
             return "never wrote test_solution.py (TDD requires real test code, not just descriptions)"
         if not any(p.endswith("solution.py") for p in paths):
             return "never wrote solution.py"
+
         test_content = next(
             (c["arguments"].get("content", "") for c in write_calls
              if c["arguments"].get("path", "").endswith("test_solution.py")),
@@ -115,14 +115,19 @@ def _validate_stage(role: str, tool_calls: list[dict], workspace: Path, project_
             compile(test_content, "test_solution.py", "exec")
         except SyntaxError as e:
             return f"test_solution.py has a syntax error and would never run: {e}"
+
         test_result = _last_test_result(tool_calls)
         if test_result is None:
-            return "no pytest run was ever recorded"
+            return "no pytest run was ever recorded - solution.py was written but never verified to actually pass"
         passed, output = test_result
         if not passed:
             tail = output[-600:] if len(output) > 600 else output
             return f"the real pytest run inside the sandbox did not pass: ...{tail}"
     return None
+
+def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
+    matches = [tc for tc in tool_calls if tc["name"] == name]
+    return matches[-1] if matches else None
 
 def _clear_workspace(workspace: Path) -> None:
     if workspace.exists():
@@ -134,10 +139,6 @@ def _finish_failed_pipeline(state: PipelineState, log_path: Path, workspace: Pat
     state.save(log_path)
     _clear_workspace(workspace)
 
-def _find_last_call(tool_calls: list[dict], name: str) -> dict | None:
-    matches = [tc for tc in tool_calls if tc["name"] == name]
-    return matches[-1] if matches else None
-
 async def run_stage_in_session(
     session: ClientSession,
     role: str,
@@ -147,6 +148,7 @@ async def run_stage_in_session(
     log_path: Path,
     checkpoint_fn,
     log_fn=print,
+    status_fn=None,
     project_name: str | None = None,
 ):
     """Returns (approved: bool, tool_calls: list[dict]). Reuses an
@@ -168,6 +170,7 @@ async def run_stage_in_session(
         provider, session, load_prompt(role), augmented_input,
         max_iterations=config.MAX_ITERATIONS_BY_ROLE.get(role, 10),
         log_fn=log_fn,
+        status_fn=status_fn,
     )
     log_fn(f"{role}: Result: {result_text2}")
     rejection_reason = _validate_stage(role, tool_calls, workspace, project_name)
@@ -179,7 +182,11 @@ async def run_stage_in_session(
 
     decision = await checkpoint_fn(role, result_text2, workspace)
     approved = decision == "approve"
-    state.record(role, result_text2, approved, rejection_reason=None if approved else f"rejected by checkpoint: {decision}", tool_calls=tool_calls)
+    state.record(
+        role, result_text2, approved,
+        rejection_reason=None if approved else f"rejected by checkpoint: {decision}",
+        tool_calls=tool_calls,
+    )
     state.save(log_path)
     return approved, tool_calls
 
@@ -246,6 +253,7 @@ async def run_pipeline(
     checkpoint_fn,
     log_fn=print,
     role_fn=lambda role: None,
+    status_fn=None,
 ) -> str | None:
 
     if engine != "mcp":
@@ -276,7 +284,8 @@ async def run_pipeline(
             role_fn(role)
             approved, tool_calls = await run_stage_in_session(
                 session, role, workspace, spec, state, log_path,
-                log_fn=log_fn, checkpoint_fn=checkpoint_fn, project_name=project_name,
+                log_fn=log_fn, checkpoint_fn=checkpoint_fn,
+                status_fn=status_fn, project_name=project_name,
             )
             if role == "dev":
                 last_tool_calls = tool_calls
