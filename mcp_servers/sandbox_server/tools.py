@@ -3,6 +3,7 @@ Maps agent roles to the set of tool names they are allowed to call.
 """
 from __future__ import annotations
 
+#NOTE: Git tools not tested yet but included for potential future use.
 TOOL_SETS: dict[str, set[str]] = {
     "re_engineer": {"read_file", "write_file", "list_dir"},
     "dev": {

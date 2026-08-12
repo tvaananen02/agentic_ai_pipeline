@@ -117,7 +117,7 @@ def _validate_stage(role: str, tool_calls: list[dict], workspace: Path, project_
             return f"test_solution.py has a syntax error and would never run: {e}"
         test_result = _last_test_result(tool_calls)
         if test_result is None:
-            return "no pytest run was ever recorded - solution.py was written but never verified to actually pass"
+            return "no pytest run was ever recorded"
         passed, output = test_result
         if not passed:
             tail = output[-600:] if len(output) > 600 else output

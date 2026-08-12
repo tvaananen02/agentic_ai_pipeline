@@ -14,14 +14,7 @@ WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT", "/workspace")).resolve()
 ALLOWED_COMMANDS: set[str] = {
     "python",
     "python3",
-    "pip",
-    "pip3",
-    "node",
-    "npm",
-    "npx",
     "pytest",
-    "git",
-    "flask",
 }
 
 WHITELISTED_DOMAINS: set[str] = {

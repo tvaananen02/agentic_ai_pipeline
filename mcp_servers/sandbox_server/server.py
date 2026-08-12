@@ -1,12 +1,10 @@
 """
-sandbox_server - one shared MCP server inside the Docker sandbox, reused
-for the whole pipeline via set_role instead of restarting per stage.
-
+Sandbox_server - one shared MCP server inside the Docker sandbox.
 Startup (stdio transport, default):
     AGENT_ROLE=re_engineer python server.py
-
 Testing with MCP Inspector:
     AGENT_ROLE=re_engineer npx @modelcontextprotocol/inspector python server.py
+NOTE: Git tools have not been tested but included for possible future use and development.    
 """
 from __future__ import annotations
 import functools
@@ -53,9 +51,6 @@ def require_role(func: Callable) -> Callable:
         return func(*args, **kwargs)
     return wrapper
 
-# Orchestrator-only. Not gated by require_role, not listed in
-# filtered_list_tools. Lets one container/session serve the whole
-# pipeline by switching roles instead of restarting Docker per stage.
 @mcp.tool()
 def set_role(role: str) -> str:
     global AGENT_ROLE

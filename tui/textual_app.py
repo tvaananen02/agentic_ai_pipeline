@@ -22,7 +22,7 @@ from state import PipelineState
 class StartScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("Hello human, let's build something...", id="banner")
+        yield Static("Hello, let's build something...", id="banner")
         yield OptionList(
             Option("Start building", id="start"),
             Option("Quit", id="quit"),
@@ -40,7 +40,7 @@ class SpecScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static("What should we build?")
-        yield Input(placeholder="a command line tool that checks if a number is prime")
+        yield Input(placeholder="Write your spec here...")
         yield Footer()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -56,9 +56,9 @@ class EngineScreen(Screen):
         yield Header()
         yield Static("Which engine should build this?")
         yield OptionList(
-            Option("MCP pipeline (re_engineer -> tester -> se_engineer)", id="mcp"),
-            Option("Claude Code (self-directed, via sandbox MCP)", id="claude_code"),
-            Option("opencode (self-directed, via sandbox MCP)", id="opencode"),
+            Option("MCP pipeline (re_engineer -> dev_agent)", id="mcp"),
+            Option("Claude Code (via sandbox MCP)", id="claude_code"),
+            Option("opencode (via sandbox MCP)", id="opencode"),
         )
         yield Footer()
 
@@ -79,7 +79,7 @@ class ModelScreen(Screen):
         yield Header()
         yield Static("Which model should power the MCP pipeline?")
         yield OptionList(
-            Option("Groq: llama-3.3-70b-versatile", id="groq:llama-3.3-70b-versatile"),
+            Option("Groq: qwen/qwen3.6-27b", id="groq:qwen/qwen3.6-27b"),            
             Option("Groq: gpt-oss-120b", id="groq:openai/gpt-oss-120b"),
         )
         yield Footer()
