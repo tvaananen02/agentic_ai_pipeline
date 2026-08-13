@@ -91,17 +91,18 @@ python3 headless_run_script.py "a web app with a counter" --model openai/gpt-oss
 ```
 
 ## Project structure
-
 ```
 orchestrator/              the control layer, runs everything, holds no LLM logic itself
   pipeline_runner.py         stage sequencing, checkpoints, single shared Docker session,
                               deterministic verification against real in-sandbox test output
   config.py                  pipeline order, paths, per-role iteration
                               budgets, model defaults
-  state.py                   per-run JSON logging to results/run_logs/
+  state.py                   per-run JSON logging to results/run_logs/ (spec, engine, model,
+                              timestamps, per-stage approval + rejection reason, deploy URL)
   project_layout.py          deterministic project-directory reconciliation (used by the
                               Claude Code / opencode comparison arm)
-  alt_engines.py              Claude Code / opencode integration (comparison arm)
+  alt_engines.py              Claude Code / opencode integration (comparison arm) -
+                              ISOLATION NOT CURRENTLY VERIFIED, see Known Issues below
   headless_run_script.py      CLI runner for fast, unattended repeat testing
 
 mcp_servers/sandbox_server/   the MCP server, runs inside the shared Docker container
@@ -114,12 +115,15 @@ mcp_servers/sandbox_server/   the MCP server, runs inside the shared Docker cont
 llm_client/                 talks to whichever LLM is configured
   base.py                     shared provider interface
   agent_provider.py            works with any OpenAI-compatible endpoint (Groq, llama.cpp)
-  tool_loop.py                 the tool-use loop: call model -> execute tool -> feed result
-                                back, with recovery for malformed tool calls and safe history
-                                truncation
+  tool_loop.py                  the tool-use loop: call model -> execute tool -> feed result
+                                 back. Handles malformed tool calls, safe history truncation,
+                                 automatic test-on-write, and rate-limit retry.
+  tool_loop_config.py           constants used by tool_loop.py (regex patterns, history size
+                                 limit, cacheable-tool list, retry budget)
 
 tui/textual_app.py          terminal UI, the actual entry point (engine/model selection,
-                             live tool-call stream, checkpoints with real file previews)
+                             live tool-call stream with status line, checkpoints with real
+                             file previews)
 
 prompts/                    one .md file per agent role
   re_engineer.md, dev.md      currently used by the pipeline
@@ -127,12 +131,24 @@ prompts/                    one .md file per agent role
   full_task.md                 combined prompt for Claude Code / opencode
 
 sandbox/Dockerfile          the sandbox image definition
-demo_projects/               where a run's generated project lands
+demo_projects/               where a run's generated project lands (cleared before each run,
+                              and on rejection)
 results/run_logs/            JSON log per run: what each stage produced, approved or not
 results/crash_logs/          full stack trace if the pipeline crashes unexpectedly
 evaluation/                  metrics.py, smoke_test.py, benchmarking, in progress
 ```
 
+## Known issues
+
+- **Claude Code / opencode are not currently isolated to the sandbox despite the
+  `--allowedTools "mcp__sandbox__*"` flag.** Confirmed via debug output
+  (`--output-format json`) that the `sandbox` MCP server can still be in a `"connecting"`
+  state when Claude Code locks its available-tools list in `-p` mode - the restriction then
+  matches nothing, and it silently falls back to native `Bash`/`Write`/`Edit`/`Read` on the
+  host. opencode has no `opencode.jsonc` at all, so it has never been connected to the
+  sandbox in the first place. **Both engines are disabled in `EngineScreen` until this is
+  fixed and re-verified.** See tracked issue: MCP server connection race causes silent
+  fallback to native tools.
 ## Notes
 
 - The pipeline currently deploys to `localhost` only.
