@@ -22,7 +22,7 @@ from state import PipelineState
 class StartScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("Hello human, let's build something...", id="banner")
+        yield Static("Hello, let's build something...", id="banner")
         yield OptionList(
             Option("Start building", id="start"),
             Option("Quit", id="quit"),
@@ -40,7 +40,7 @@ class SpecScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static("What should we build?")
-        yield Input(placeholder="a command line tool that checks if a number is prime")
+        yield Input(placeholder="Write the spec here...")
         yield Footer()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -57,8 +57,8 @@ class EngineScreen(Screen):
         yield Static("Which engine should build this?")
         yield OptionList(
             Option("MCP pipeline (re_engineer -> dev)", id="mcp"),
-            Option("Claude Code (via sandbox MCP)", id="claude_code"),
-            Option("opencode (via sandbox MCP)", id="opencode"),
+            #Option("Claude Code (via sandbox MCP)", id="claude_code"),
+            #Option("opencode (via sandbox MCP)", id="opencode"),
         )
         yield Footer()
 
