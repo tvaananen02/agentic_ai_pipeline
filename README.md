@@ -1,4 +1,4 @@
-# Agentic Infra PoC
+# What this is?
 
 A prototype exploring how far agentic AI can automate software development: give a
 plain-language spec (e.g. *"build a web app with a counter"*), and a pipeline of AI agents
