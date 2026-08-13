@@ -233,7 +233,7 @@ def run_alt_engine(engine: str, workspace: Path, spec: str) -> tuple[bool, str]:
     if engine == "claude_code":
         output, returncode = run_claude_code(prompt, workspace)
     elif engine == "opencode":
-        output, returncode = run_opencode(prompt, workspace)
+        output, returncode = run_opencode(prompt, workspace, model="opencode/big-pickle")
     else:
         raise ValueError(f"Unknown config.ENGINE: {engine}")
     print(f"[{engine}] finished, returncode={returncode}")
